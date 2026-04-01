@@ -5,7 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "accelerate>=1.13.0",
     "flake8>=7.3.0",
+    "llm-sdk",
     "mypy>=1.19.1",
     "numpy>=2.2.6",
     "pydantic>=2.12.5",
@@ -15,3 +17,11 @@ dependencies = [
 exclude = [
     "^llm_sdk/$"
 ]
+
+[tool.uv.workspace]
+members = [
+    "llm_sdk",
+]
+
+[tool.uv.sources]
+llm-sdk = { workspace = true }
