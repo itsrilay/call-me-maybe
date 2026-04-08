@@ -177,3 +177,10 @@ class JSONValidator:
         elif state == StatesEnum.JSON_END:
             return "}".startswith(token)
         return False
+
+    def validate_buffer(self, buffer: str, param_type: str) -> bool:
+        if param_type == "string":
+            return bool(self.STR_FULL_RE.match(buffer))
+        elif param_type == "number":
+            return bool(self.NUM_FULL_RE.match(buffer))
+        return False
