@@ -101,23 +101,14 @@ class JSONValidator:
     def _validate_fixed(
         self, state: StatesEnum, buffer: str, token: str
     ) -> bool:
-        targets: dict[StatesEnum, str] = {
-            StatesEnum.NAME_KEY: '"name":',
-            StatesEnum.ARGS_KEY: '"arguments":'
-        }
+        text = buffer + token
 
-        target = targets.get(state)
-        if not target or not target.startswith(buffer + token):
-            return False
-
-        return True
+        return text in self.prefix_lookups[state]
 
     def _validate_name(self, buffer: str, token: str) -> bool:
-        new_buffer = buffer + token
+        text = buffer + token
 
-        return any(
-            f'"{name}",'.startswith(new_buffer) for name in self.valid_fn_names
-        )
+        return text in self.prefix_lookups[StatesEnum.NAME_VALUE]
 
     def _validate_param_key(
         self,
@@ -128,10 +119,9 @@ class JSONValidator:
         if not current_fn:
             return False
 
-        return any(
-            f'"{param}":'.startswith(buffer + token)
-            for param in current_fn.parameters.keys()
-        )
+        text = buffer + token
+
+        return text in self.param_prefix_lookups[current_fn.name]
 
     def _validate_param_value(
         self,
