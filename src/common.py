@@ -18,3 +18,4 @@ class StatesEnum(StrEnum):
     PARAM_KEY = auto()
     PARAM_VALUE = auto()
     JSON_END = auto()
+    END = auto()
