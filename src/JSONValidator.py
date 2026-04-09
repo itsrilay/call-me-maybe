@@ -8,6 +8,23 @@ class JSONValidator:
         self.fn_defs = fn_defs
         self.valid_fn_names: list[str] = [fn.name for fn in fn_defs]
 
+        self.prefix_lookups = {
+            StatesEnum.START: self._build_prefix_set(['{"name":']),
+            StatesEnum.NAME_KEY: self._build_prefix_set(['"name":']),
+            StatesEnum.ARGS_KEY: self._build_prefix_set(['"arguments":']),
+            StatesEnum.NAME_VALUE: self._build_prefix_set(
+                [f'"{name}",' for name in self.valid_fn_names]
+            ),
+            StatesEnum.JSON_END: {"}"}
+        }
+
+        self.param_prefix_lookups = {
+            fn.name: self._build_prefix_set(
+                [f'"{param}":' for param in fn.parameters]
+            )
+            for fn in fn_defs
+        }
+
         # Numbers Regex
         self.NUM_FULL_RE = re.compile(
             r"""
@@ -72,6 +89,14 @@ class JSONValidator:
             """,
             re.VERBOSE
         )
+
+    def _build_prefix_set(self, targets: list[str]) -> set[str]:
+        prefix_set = set()
+        for name in targets:
+            for i in range(1, len(name) + 1):
+                prefix_set.add(name[:i])
+
+        return prefix_set
 
     def _validate_fixed(
         self, state: StatesEnum, buffer: str, token: str
