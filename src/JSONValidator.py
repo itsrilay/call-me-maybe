@@ -11,7 +11,7 @@ class JSONValidator:
         self.prefix_lookups = {
             StatesEnum.START: self._build_prefix_set(['{"name":']),
             StatesEnum.NAME_KEY: self._build_prefix_set(['"name":']),
-            StatesEnum.ARGS_KEY: self._build_prefix_set(['"arguments":']),
+            StatesEnum.ARGS_KEY: self._build_prefix_set(['"parameters":']),
             StatesEnum.NAME_VALUE: self._build_prefix_set(
                 [f'"{name}",' for name in self.valid_fn_names]
             ),
