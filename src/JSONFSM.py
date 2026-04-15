@@ -44,6 +44,12 @@ class JSONFSM:
     def get_allowed_tokens(
         self, vocabulary: list[str], validator: JSONValidator
     ) -> list[str]:
+        # Determine if there are parameters to use
+        is_full = False
+        if self.current_fn:
+            params = self.current_fn.parameters
+            is_full = len(self.used_params) == len(params)
+
         # Get prefix set for current state
         prefix_set = validator.prefix_lookups.get(self.state)
 
@@ -57,7 +63,28 @@ class JSONFSM:
                 f'"{param_name}":' for param_name in self.current_fn.parameters
                 if param_name not in self.used_params
             ]
-            prefix_set = validator._build_prefix_set(param_names)
+            prefix_set = validator.build_prefix_set(param_names)
+
+        # Special case for fixed literals (boolean, null)
+        if (
+            not prefix_set
+            and self.state == StatesEnum.PARAM_VALUE
+            and self.current_param and self.current_fn
+        ):
+            params = self.current_fn.parameters
+            exp_type = params[self.current_param].type
+
+            if exp_type == "boolean":
+                # Select set that ends with the correct structural character
+                prefix_set = (
+                    validator.bool_brace_lookups if is_full
+                    else validator.bool_comma_lookups
+                )
+            elif exp_type == "null":
+                prefix_set = (
+                    validator.null_brace_lookups if is_full
+                    else validator.null_comma_lookups
+                )
 
         if prefix_set is not None:
             return [
@@ -65,6 +92,7 @@ class JSONFSM:
                 if self.buffer + token in prefix_set
             ]
         else:
+            # Filter for complex types (number, string)
             char_filter = None
             required_prefix = None
             if (
@@ -83,15 +111,8 @@ class JSONFSM:
 
                     if len(self.used_params) == len(params):
                         char_filter.discard(",")
-
                 elif exp_type == "string" and not self.buffer:
                     required_prefix = '"'
-
-            # Determine if there are parameters to use
-            is_full = False
-            if self.current_fn:
-                params = self.current_fn.parameters
-                is_full = len(self.used_params) == len(params)
 
             if char_filter:
                 # If number value

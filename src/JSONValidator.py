@@ -9,21 +9,27 @@ class JSONValidator:
         self.valid_fn_names: list[str] = [fn.name for fn in fn_defs]
 
         self.prefix_lookups = {
-            StatesEnum.START: self._build_prefix_set(['{"name":']),
-            StatesEnum.NAME_KEY: self._build_prefix_set(['"name":']),
-            StatesEnum.ARGS_KEY: self._build_prefix_set(['"parameters":']),
-            StatesEnum.NAME_VALUE: self._build_prefix_set(
+            StatesEnum.START: self.build_prefix_set(['{"name":']),
+            StatesEnum.NAME_KEY: self.build_prefix_set(['"name":']),
+            StatesEnum.ARGS_KEY: self.build_prefix_set(['"parameters":']),
+            StatesEnum.NAME_VALUE: self.build_prefix_set(
                 [f'"{name}",' for name in self.valid_fn_names]
             ),
             StatesEnum.JSON_END: {"}"}
         }
 
         self.param_prefix_lookups = {
-            fn.name: self._build_prefix_set(
+            fn.name: self.build_prefix_set(
                 [f'"{param}":' for param in fn.parameters]
             )
             for fn in fn_defs
         }
+
+        self.bool_comma_lookups = self.build_prefix_set(["true,", "false,"])
+        self.bool_brace_lookups = self.build_prefix_set(["true}", "false}"])
+
+        self.null_comma_lookups = self.build_prefix_set(["null,"])
+        self.null_brace_lookups = self.build_prefix_set(["null}"])
 
         # Numbers Regex
         self.NUM_FULL_RE = re.compile(
@@ -90,14 +96,6 @@ class JSONValidator:
             re.VERBOSE
         )
 
-    def _build_prefix_set(self, targets: list[str]) -> set[str]:
-        prefix_set = set()
-        for name in targets:
-            for i in range(1, len(name) + 1):
-                prefix_set.add(name[:i])
-
-        return prefix_set
-
     def _validate_fixed(
         self, state: StatesEnum, buffer: str, token: str
     ) -> bool:
@@ -134,12 +132,11 @@ class JSONValidator:
             return False
 
         param_type = current_fn.parameters[current_param].type
+        text = buffer + token
 
         if param_type == "number":
             if token == " ":
                 return False
-
-            text = buffer + token
 
             # Full number validation
             if text.endswith(",") or text.endswith("}"):
@@ -150,9 +147,7 @@ class JSONValidator:
             # Partial number validation
             return bool(self.NUM_PART_RE.match(text))
 
-        if param_type == "string":
-            text = buffer + token
-
+        elif param_type == "string":
             # Full string validation
             if (text.endswith(",") or text.endswith("}")) and text[-2] == '"':
                 string_part = text[:-1]
@@ -162,6 +157,37 @@ class JSONValidator:
             # Partial string validation
             return bool(self.STR_PART_RE.match(text))
 
+        elif param_type == "boolean":
+            return (
+                text in self.bool_comma_lookups
+                or text in self.bool_brace_lookups
+            )
+
+        elif param_type == "null":
+            return (
+                text in self.null_comma_lookups
+                or text in self.null_brace_lookups
+            )
+
+        return False
+
+    def build_prefix_set(self, targets: list[str]) -> set[str]:
+        prefix_set = set()
+        for name in targets:
+            for i in range(1, len(name) + 1):
+                prefix_set.add(name[:i])
+
+        return prefix_set
+
+    def validate_buffer(self, buffer: str, param_type: str) -> bool:
+        if param_type == "string":
+            return bool(self.STR_FULL_RE.match(buffer))
+        elif param_type == "number":
+            return bool(self.NUM_FULL_RE.match(buffer))
+        elif param_type == "boolean":
+            return "true" == buffer or "false" == buffer
+        elif param_type == "null":
+            return "null" == buffer
         return False
 
     def is_token_valid(
@@ -191,11 +217,4 @@ class JSONValidator:
             )
         elif state == StatesEnum.JSON_END:
             return "}".startswith(token)
-        return False
-
-    def validate_buffer(self, buffer: str, param_type: str) -> bool:
-        if param_type == "string":
-            return bool(self.STR_FULL_RE.match(buffer))
-        elif param_type == "number":
-            return bool(self.NUM_FULL_RE.match(buffer))
         return False
