@@ -39,7 +39,7 @@ class JSONValidator:
                 (0|[1-9]\d*)    # Integer (no leading zeros)
                 (\.\d+)?        # Fraction (must have digits)
                 ([eE][+-]?\d+)? # Exponent (must have digits)
-                $               # End
+                \Z              # End
             """,
             re.VERBOSE
         )
@@ -60,7 +60,7 @@ class JSONValidator:
                         [eE][+-]?\d*      # 3. Exponent and then integer (1e10)
                     )?                    # End of optional branches
                 )?                        # Make group optional (for '-' or '')
-                $                         # Anchor to the end of the string
+                \Z                        # Anchor to the end of the string
             """,
             re.VERBOSE
         )
@@ -76,7 +76,7 @@ class JSONValidator:
                     | \\ u [0-9a-fA-F]{4}        # OR Unicode escape \uXXXX
                 )*                               # Repeat content
                 "                                # Closing quote
-                $
+                \Z
             """,
             re.VERBOSE
         )
@@ -91,7 +91,7 @@ class JSONValidator:
                     | \\ u [0-9a-fA-F]{0,4}      # Partial Unicode escape
                 )*                               # Repeat content
                 "?                               # Optional closing quote
-                $
+                \Z
             """,
             re.VERBOSE
         )
