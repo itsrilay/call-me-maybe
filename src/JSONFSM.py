@@ -42,8 +42,8 @@ class JSONFSM:
         }
 
     def get_allowed_tokens(
-        self, vocabulary: list[str], validator: JSONValidator
-    ) -> list[str]:
+        self, decoded_vocabulary: list[str], validator: JSONValidator
+    ) -> list[int]:
         # Determine if there are parameters to use
         is_full = False
         if self.current_fn:
@@ -88,8 +88,8 @@ class JSONFSM:
 
         if prefix_set is not None:
             return [
-                token for token in vocabulary
-                if self.buffer + token in prefix_set
+                i for i in range(len(decoded_vocabulary))
+                if self.buffer + decoded_vocabulary[i] in prefix_set
             ]
         else:
             # Filter for complex types (number, string)
@@ -117,12 +117,12 @@ class JSONFSM:
             if char_filter:
                 # If number value
                 return [
-                    token for token in vocabulary
-                    if all(c in char_filter for c in token) and
+                    i for i in range(len(decoded_vocabulary))
+                    if all(c in char_filter for c in decoded_vocabulary[i]) and
                     validator.is_token_valid(
                         self.state,
                         self.buffer,
-                        token,
+                        decoded_vocabulary[i],
                         self.current_fn,
                         self.current_param
                     )
@@ -130,27 +130,27 @@ class JSONFSM:
             elif required_prefix:
                 # If in the start of a string value
                 return [
-                    token for token in vocabulary
-                    if token.startswith(required_prefix) and
+                    i for i in range(len(decoded_vocabulary))
+                    if decoded_vocabulary[i].startswith(required_prefix) and
                     validator.is_token_valid(
                         self.state,
                         self.buffer,
-                        token,
+                        decoded_vocabulary[i],
                         self.current_fn,
                         self.current_param
-                    ) and not (is_full and token.endswith(","))
+                    ) and not (is_full and decoded_vocabulary[i].endswith(","))
                 ]
             else:
                 # Standard path for everything else
                 return [
-                    token for token in vocabulary
+                    i for i in range(len(decoded_vocabulary))
                     if validator.is_token_valid(
                         self.state,
                         self.buffer,
-                        token,
+                        decoded_vocabulary[i],
                         self.current_fn,
                         self.current_param
-                    ) and not (is_full and token.endswith(","))
+                    ) and not (is_full and decoded_vocabulary[i].endswith(","))
                 ]
 
     def update_state(
@@ -207,7 +207,14 @@ class JSONFSM:
                     self.buffer += before + trigger
                     self.full_json += before + trigger
             else:
-                # Update current state
-                self.buffer += remaining
-                self.full_json += remaining
+                # Update buffer if the resulting text is valid for the state
+                if validator.is_token_valid(
+                    self.state,
+                    self.buffer,
+                    remaining,
+                    self.current_fn,
+                    self.current_param
+                ):
+                    self.buffer += remaining
+                    self.full_json += remaining
                 break
