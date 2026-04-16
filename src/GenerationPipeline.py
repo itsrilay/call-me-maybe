@@ -29,12 +29,17 @@ class GenerationPipeline:
         self.fn_defs = fn_defs
         self.validator = JSONValidator(fn_defs)
 
+        # Get vocabulary
         try:
             with open(f"{model.get_path_to_vocab_file()}") as file:
                 self.vocabulary: list[str] = json.load(file)
         except FileNotFoundError:
             print("Couldn't parse LLM vocabulary", file=sys.stderr)
             sys.exit(1)
+
+        self.decoded_vocabulary = [
+            self.model.decode([i]) for i in range(len(self.vocabulary))
+        ]
 
         self.token_to_id = {
             token: id for id, token in enumerate(self.vocabulary)
@@ -56,7 +61,9 @@ class GenerationPipeline:
 
             if len(fn.parameters) == 0:
                 question = f"Question: Run {fn.name}\n"
-                answer = json.dumps({"name": fn.name, "parameters": {}})
+                answer = json.dumps(
+                    {"name": fn.name, "parameters": {}}, separators=(',', ':')
+                )
             else:
                 param_strings: list[str] = []
                 param_dict: dict[str, str | int | float | bool | None] = {}
@@ -70,7 +77,8 @@ class GenerationPipeline:
                     f"{' and '.join(param_strings)}\n"
                 )
                 answer = json.dumps(
-                    {"name": fn.name, "parameters": param_dict}
+                    {"name": fn.name, "parameters": param_dict},
+                    separators=(',', ':')
                 )
 
             self.system_prompt += f"{question}{self.JSON_ANCHOR}{answer}\n"
@@ -94,16 +102,14 @@ class GenerationPipeline:
             fsm.state != StatesEnum.END and tokens_generated < self.MAX_TOKENS
         ):
             allowed_tokens = fsm.get_allowed_tokens(
-                self.vocabulary, self.validator
+                self.decoded_vocabulary, self.validator
             )
-
-            allowed_ids = [self.token_to_id[token] for token in allowed_tokens]
 
             logits = self.model.get_logits_from_input_ids(input_ids_list)
 
             logit_mask = np.full(len(logits), -float("inf"))
 
-            logit_mask[allowed_ids] = 0.0
+            logit_mask[allowed_tokens] = 0.0
 
             logits_arr = np.array(logits)
 
