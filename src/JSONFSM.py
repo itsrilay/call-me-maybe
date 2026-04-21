@@ -83,10 +83,24 @@ class JSONFSM:
             token_added = False
             stripped_token = token.lstrip()
 
-            # Transition state
+            # Transition state, token has the trigger
             if is_buffer_complete and stripped_token.startswith(req_trigger):
                 allowed_tokens.append(i)
                 token_added = True
+
+            # Transition state, token completes buffer and has the trigger
+            elif not is_buffer_complete and req_trigger in token:
+                before, _, remaining = token.partition(req_trigger)
+                combined_value = self.buffer + before
+
+                # Check if part before trigger correctly closes the value
+                if (
+                    curr_type and
+                    validator.validate_buffer(combined_value, curr_type) and
+                    remaining.strip() == ""
+                ):
+                    allowed_tokens.append(i)
+                    token_added = True
 
             if not token_added:
                 if validator.is_token_valid(
