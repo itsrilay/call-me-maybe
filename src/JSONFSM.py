@@ -44,114 +44,61 @@ class JSONFSM:
     def get_allowed_tokens(
         self, decoded_vocabulary: list[str], validator: JSONValidator
     ) -> list[int]:
-        # Determine if there are parameters to use
+        allowed_tokens: list[int] = []
+
+        if self.state == StatesEnum.END:
+            return []
+
+        # Handle structural states
+        if self.state != StatesEnum.PARAM_VALUE:
+            for i, token in enumerate(decoded_vocabulary):
+                if validator.is_token_valid(
+                    self.state,
+                    self.buffer,
+                    token,
+                    self.current_fn,
+                    self.current_param
+                ):
+                    allowed_tokens.append(i)
+            return allowed_tokens
+
+        # Handle PARAM_VALUE
         is_full = False
-        if self.current_fn:
+        curr_type = None
+        if self.current_fn and self.current_param:
             params = self.current_fn.parameters
             is_full = len(self.used_params) == len(params)
+            curr_type = params[self.current_param].type
 
-        # Get prefix set for current state
-        prefix_set = validator.prefix_lookups.get(self.state)
+        req_trigger = "}" if is_full else ","
 
-        # Special case for PARAM_KEY (which is function-specific)
-        if (
-            not prefix_set
-            and self.state == StatesEnum.PARAM_KEY
-            and self.current_fn
-        ):
-            param_names = [
-                f'"{param_name}":' for param_name in self.current_fn.parameters
-                if param_name not in self.used_params
-            ]
-            prefix_set = validator.build_prefix_set(param_names)
+        # Check if the buffer is complete to transition
+        is_buffer_complete = False
+        if curr_type:
+            is_buffer_complete = validator.validate_buffer(
+                self.buffer, curr_type
+            )
 
-        # Special case for fixed literals (boolean, null)
-        if (
-            not prefix_set
-            and self.state == StatesEnum.PARAM_VALUE
-            and self.current_param and self.current_fn
-        ):
-            params = self.current_fn.parameters
-            exp_type = params[self.current_param].type
+        for i, token in enumerate(decoded_vocabulary):
+            token_added = False
+            stripped_token = token.lstrip()
 
-            if exp_type == "boolean":
-                # Select set that ends with the correct structural character
-                prefix_set = (
-                    validator.bool_brace_lookups if is_full
-                    else validator.bool_comma_lookups
-                )
-            elif exp_type == "null":
-                prefix_set = (
-                    validator.null_brace_lookups if is_full
-                    else validator.null_comma_lookups
-                )
+            # Transition state
+            if is_buffer_complete and stripped_token.startswith(req_trigger):
+                allowed_tokens.append(i)
+                token_added = True
 
-        if prefix_set is not None:
-            return [
-                i for i in range(len(decoded_vocabulary))
-                if self.buffer + decoded_vocabulary[i] in prefix_set
-            ]
-        else:
-            # Filter for complex types (number, string)
-            char_filter = None
-            required_prefix = None
-            if (
-                self.state == StatesEnum.PARAM_VALUE and
-                self.current_fn and
-                self.current_param
-            ):
-                params = self.current_fn.parameters
-                exp_type = params[self.current_param].type
+            if not token_added:
+                if validator.is_token_valid(
+                    self.state,
+                    self.buffer,
+                    token,
+                    self.current_fn,
+                    self.current_param
+                ):
+                    allowed_tokens.append(i)
 
-                if exp_type == "number":
-                    char_filter = {
-                        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-                        ".", "-", "+", "e", "E", ",", "}"
-                    }
-
-                    if len(self.used_params) == len(params):
-                        char_filter.discard(",")
-                elif exp_type == "string" and not self.buffer:
-                    required_prefix = '"'
-
-            if char_filter:
-                # If number value
-                return [
-                    i for i in range(len(decoded_vocabulary))
-                    if all(c in char_filter for c in decoded_vocabulary[i]) and
-                    validator.is_token_valid(
-                        self.state,
-                        self.buffer,
-                        decoded_vocabulary[i],
-                        self.current_fn,
-                        self.current_param
-                    )
-                ]
-            elif required_prefix:
-                # If in the start of a string value
-                return [
-                    i for i in range(len(decoded_vocabulary))
-                    if decoded_vocabulary[i].startswith(required_prefix) and
-                    validator.is_token_valid(
-                        self.state,
-                        self.buffer,
-                        decoded_vocabulary[i],
-                        self.current_fn,
-                        self.current_param
-                    ) and not (is_full and decoded_vocabulary[i].endswith(","))
-                ]
-            else:
-                # Standard path for everything else
-                return [
-                    i for i in range(len(decoded_vocabulary))
-                    if validator.is_token_valid(
-                        self.state,
-                        self.buffer,
-                        decoded_vocabulary[i],
-                        self.current_fn,
-                        self.current_param
-                    ) and not (is_full and decoded_vocabulary[i].endswith(","))
-                ]
+        return allowed_tokens
 
     def update_state(
         self, last_token_text: str, validator: JSONValidator
