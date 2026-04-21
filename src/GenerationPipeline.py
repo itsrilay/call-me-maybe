@@ -11,15 +11,6 @@ import numpy as np
 
 class GenerationPipeline:
 
-    JSON_ANCHOR = "Answer in JSON format: "
-
-    TYPE_PLACEHOLDERS: dict[str, str | int | float | bool | None] = {
-        "number": 42.0,
-        "string": "example_text",
-        "boolean": True,
-        "null": None
-    }
-
     MAX_TOKENS = 256
 
     def __init__(
@@ -45,7 +36,13 @@ class GenerationPipeline:
             token: id for id, token in enumerate(self.vocabulary)
         }
 
-        self.system_prompt = "You have access to the following functions:\n\n"
+        self.system_prompt = (
+            "You are an expert AI assistant. Your task is to call"
+            " a function to help the user.\n"
+            "\nBased on the user's query, output ONLY a JSON "
+            "object calling the correct function.\n"
+            "You have access to the following functions:\n\n"
+        )
 
         for fn in self.fn_defs:
             # Tell the model the function definitions
@@ -56,40 +53,13 @@ class GenerationPipeline:
                 parameters += f"{param}: {param_type}\n"
             self.system_prompt += f"{parameters}\n"
 
-            # Generate example
-            self.system_prompt += "Example:\n"
-
-            if len(fn.parameters) == 0:
-                question = f"Question: Run {fn.name}\n"
-                answer = json.dumps(
-                    {"name": fn.name, "parameters": {}}, separators=(',', ':')
-                )
-            else:
-                param_strings: list[str] = []
-                param_dict: dict[str, str | int | float | bool | None] = {}
-                for param_name, param_obj in fn.parameters.items():
-                    placeholder = self.TYPE_PLACEHOLDERS[param_obj.type]
-                    param_strings.append(f"{param_name} as {placeholder}")
-                    param_dict[param_name] = placeholder
-
-                question = (
-                    f"Question: Execute {fn.name} with " +
-                    f"{' and '.join(param_strings)}\n"
-                )
-                answer = json.dumps(
-                    {"name": fn.name, "parameters": param_dict},
-                    separators=(',', ':')
-                )
-
-            self.system_prompt += f"{question}{self.JSON_ANCHOR}{answer}\n"
-
         print(self.system_prompt)
 
     def run(self, user_question: str) -> FunctionCall | None:
         full_prompt = (
             f"{self.system_prompt}\n\n" +
-            f"{user_question}\n\n" +
-            f"{self.JSON_ANCHOR}"
+            f"User prompt: {user_question}\n\n" +
+            "Assistant: "
         )
 
         input_ids_list: list[int] = self.model.encode(full_prompt)[0].tolist()
