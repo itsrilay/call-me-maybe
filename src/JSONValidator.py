@@ -1,6 +1,5 @@
 from src.common import StatesEnum
 from src.models import FunctionDefinition
-import re
 
 
 class JSONValidator:
@@ -25,87 +24,14 @@ class JSONValidator:
             for fn in fn_defs
         }
 
-        self.bool_comma_lookups = self.build_prefix_set(["true,", "false,"])
-        self.bool_brace_lookups = self.build_prefix_set(["true}", "false}"])
-
-        self.null_comma_lookups = self.build_prefix_set(["null,"])
-        self.null_brace_lookups = self.build_prefix_set(["null}"])
-
-        # Numbers Regex
-        self.NUM_FULL_RE = re.compile(
-            r"""
-                ^               # Start
-                -?              # Optional sign
-                (0|[1-9]\d*)    # Integer (no leading zeros)
-                (\.\d+)?        # Fraction (must have digits)
-                ([eE][+-]?\d+)? # Exponent (must have digits)
-                \Z              # End
-            """,
-            re.VERBOSE
-        )
-
-        self.NUM_PART_RE = re.compile(
-            r"""
-                ^                         # Anchor to the start of the string
-                -?                        # Optional leading minus sign
-                (?:                       # Start of the core number logic
-                    (?:0|[1-9]\d*)        # '0' OR (1-9 followed by digits)
-                    (?:                   # Optional branches:
-                        \.\d+             # 1. Dot followed by at least a digit
-                        (?:[eE][+-]?\d*)? # Can then be followed by an exponent
-                        |                 # --- OR ---
-                        \.\d*             # 2. Dot and zero or more digits...
-                        (?![eE])          # If digits are 0, forbid an 'e'
-                        |                 # --- OR ---
-                        [eE][+-]?\d*      # 3. Exponent and then integer (1e10)
-                    )?                    # End of optional branches
-                )?                        # Make group optional (for '-' or '')
-                \Z                        # Anchor to the end of the string
-            """,
-            re.VERBOSE
-        )
-
-        # Strings Regex
-        self.STR_FULL_RE = re.compile(
-            r"""
-                ^
-                "                                # Opening quote
-                (?:
-                    [^"\\\x00-\x1f]              # char: no quote, '\', control
-                    | \\ ["\\/bfnrt]             # OR standard escapes
-                    | \\ u [0-9a-fA-F]{4}        # OR Unicode escape \uXXXX
-                )*                               # Repeat content
-                "                                # Closing quote
-                \Z
-            """,
-            re.VERBOSE
-        )
-
-        self.STR_PART_RE = re.compile(
-            r"""
-                ^
-                "                                # Must start with a quote
-                (?:
-                    [^"\\\x00-\x1f]              # Normal characters
-                    | \\ [\"\\/bfnrt]?           # Partial standard escape
-                    | \\ u [0-9a-fA-F]{0,4}      # Partial Unicode escape
-                )*                               # Repeat content
-                "?                               # Optional closing quote
-                \Z
-            """,
-            re.VERBOSE
-        )
-
     def _validate_fixed(
         self, state: StatesEnum, buffer: str, token: str
     ) -> bool:
         text = buffer + token
-
         return text in self.prefix_lookups[state]
 
     def _validate_name(self, buffer: str, token: str) -> bool:
         text = buffer + token
-
         return text in self.prefix_lookups[StatesEnum.NAME_VALUE]
 
     def _validate_param_key(
@@ -118,7 +44,6 @@ class JSONValidator:
             return False
 
         text = buffer + token
-
         return text in self.param_prefix_lookups[current_fn.name]
 
     def _validate_param_value(
@@ -133,46 +58,119 @@ class JSONValidator:
 
         param_type = current_fn.parameters[current_param].type
         text = buffer + token
+        stripped_text = text.lstrip()
 
-        if param_type == "number":
-            if token == " ":
+        # Allow whitespace to make sure the LLM always has options
+        if not stripped_text:
+            return True
+
+        # Structural boundaries
+        forbidden = {"{", "}", ":", ","}
+
+        if param_type == "string":
+            if not stripped_text.startswith('"'):
                 return False
 
-            # Full number validation
-            if text.endswith(",") or text.endswith("}"):
-                number_part = text[:-1]
+            is_buffer_closed = False
+            stripped_buf = buffer.lstrip()
 
-                return bool(self.NUM_FULL_RE.match(number_part))
+            # Check if buffer is a closed string
+            if len(stripped_buf) >= 2 and stripped_buf.endswith('"'):
+                # Check for escaped quotes inside string
+                text_before = stripped_buf[:-1]
+                bs_count = len(text_before) - len(text_before.rstrip("\\"))
+                if bs_count % 2 == 0:
+                    is_buffer_closed = True
 
-            # Partial number validation
-            return bool(self.NUM_PART_RE.match(text))
+            if is_buffer_closed:
+                # Allow whitespace until LLM transitions
+                return token.isspace()
+            else:
+                # Block newline
+                if "\n" in token:
+                    return False
 
-        elif param_type == "string":
-            # Full string validation
-            if (text.endswith(",") or text.endswith("}")) and text[-2] == '"':
-                string_part = text[:-1]
+                quote_pos = token.find('"')
+                if quote_pos != -1:
+                    # See if quote is preceded by backslashes
+                    text_before = buffer + token[:quote_pos]
+                    bs_count = len(text_before) - len(text_before.rstrip("\\"))
 
-                return bool(self.STR_FULL_RE.match(string_part))
+                    if bs_count % 2 == 0:
+                        # Prevents adding characters after closing quote
+                        # Ensures transitions are handled only be the FSM
+                        return token[quote_pos + 1:].strip() == ""
 
-            # Partial string validation
-            return bool(self.STR_PART_RE.match(text))
+                # Allow data, even escaped quotes
+                return True
+
+        elif param_type == "number":
+            first_char = stripped_text[0]
+
+            # Must start with a digit or minus sign
+            if not (first_char.isdigit() or first_char == "-"):
+                return False
+
+            # Block 0 followed by another digit
+            if (
+                len(stripped_text) >= 2 and
+                stripped_text.startswith("0") and
+                stripped_text[1].isdigit()
+            ):
+                return False
+            elif (
+                len(stripped_text) >= 3 and
+                stripped_text.startswith("-0") and
+                stripped_text[1].isdigit()
+            ):
+                return False
+
+            # Reject invalid chars
+            allowed_chars = set("0123456789.-+eE")
+            if not all(char in allowed_chars for char in token):
+                return False
+
+            return True
 
         elif param_type == "boolean":
-            return (
-                text in self.bool_comma_lookups
-                or text in self.bool_brace_lookups
-            )
+            first_char = stripped_text[0]
+            if first_char not in {"t", "f"}:
+                return False
+
+            if any(char in token for char in forbidden):
+                return False
+
+            # Ensure valid spelling for target
+            target = "true" if first_char == "t" else "false"
+            if len(stripped_text) <= len(target):
+                return target.startswith(stripped_text)
+            else:
+                return (
+                    stripped_text.startswith(target) and
+                    stripped_text[len(target):].isspace()
+                )
 
         elif param_type == "null":
-            return (
-                text in self.null_comma_lookups
-                or text in self.null_brace_lookups
-            )
+            first_char = stripped_text[0]
+            if first_char != "n":
+                return False
+
+            if any(char in token for char in forbidden):
+                return False
+
+            target = "null"
+            if len(stripped_text) <= len(target):
+                return target.startswith(stripped_text)
+            else:
+                return (
+                    stripped_text.startswith(target) and
+                    stripped_text[len(target):].isspace()
+                )
 
         return False
 
     def build_prefix_set(self, targets: list[str]) -> set[str]:
-        prefix_set = set()
+        prefix_set: set[str] = set()
         for name in targets:
             for i in range(1, len(name) + 1):
                 prefix_set.add(name[:i])
@@ -180,14 +178,39 @@ class JSONValidator:
         return prefix_set
 
     def validate_buffer(self, buffer: str, param_type: str) -> bool:
+        stripped_buf = buffer.strip()
+        if not stripped_buf:
+            return False
+
         if param_type == "string":
-            return bool(self.STR_FULL_RE.match(buffer))
+            if not (
+                stripped_buf.startswith('"') and
+                stripped_buf.endswith('"') and
+                len(stripped_buf) >= 2
+            ):
+                return False
+
+            text_before = stripped_buf[:-1]
+            bs_count = len(text_before) - len(text_before.rstrip("\\"))
+            return bs_count % 2 == 0
+
         elif param_type == "number":
-            return bool(self.NUM_FULL_RE.match(buffer))
+            # Cannot end in incomplete math symbol
+            if stripped_buf[-1] in {".", "-", "+", "e", "E"}:
+                return False
+
+            try:
+                float(stripped_buf)
+                return True
+            except ValueError:
+                return False
+
         elif param_type == "boolean":
-            return "true" == buffer or "false" == buffer
+            return stripped_buf in {"true", "false"}
+
         elif param_type == "null":
-            return "null" == buffer
+            return stripped_buf == "null"
+
         return False
 
     def is_token_valid(
@@ -205,10 +228,10 @@ class JSONValidator:
         elif state == StatesEnum.NAME_VALUE:
             return self._validate_name(buffer, token)
         elif state == StatesEnum.ARGS_START:
-            combined = buffer + token
-            if not combined.startswith("{"):
+            text = buffer + token
+            if not text.startswith("{"):
                 return False
-            return self._validate_param_key("", combined[1:], current_fn)
+            return self._validate_param_key("", text[1:], current_fn)
         elif state == StatesEnum.PARAM_KEY:
             return self._validate_param_key(buffer, token, current_fn)
         elif state == StatesEnum.PARAM_VALUE:
