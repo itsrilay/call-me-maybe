@@ -121,7 +121,7 @@ class JSONValidator:
             elif (
                 len(stripped_text) >= 3 and
                 stripped_text.startswith("-0") and
-                stripped_text[1].isdigit()
+                stripped_text[2].isdigit()
             ):
                 return False
 
@@ -199,6 +199,12 @@ class JSONValidator:
             if stripped_buf[-1] in {".", "-", "+", "e", "E"}:
                 return False
 
+            # JSON requires at least one digit
+            # after a decimal point before an exponent
+            lower_buf = stripped_buf.lower()
+            if ".e" in lower_buf:
+                return False
+
             try:
                 float(stripped_buf)
                 return True
@@ -231,6 +237,18 @@ class JSONValidator:
             text = buffer + token
             if not text.startswith("{"):
                 return False
+
+            # What comes after the opening brace
+            remainder = text[1:].lstrip()
+
+            # Allow '{' or '{ ' to pass
+            if not remainder:
+                return True
+
+            # If no parameters, continue with '}'
+            if current_fn and not current_fn.parameters:
+                return "}".startswith(remainder)
+
             return self._validate_param_key("", text[1:], current_fn)
         elif state == StatesEnum.PARAM_KEY:
             return self._validate_param_key(buffer, token, current_fn)
