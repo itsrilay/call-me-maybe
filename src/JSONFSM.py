@@ -22,7 +22,10 @@ class JSONFSM:
             StatesEnum.NAME_VALUE: {",": StatesEnum.ARGS_KEY},
             StatesEnum.ARGS_KEY: {":": StatesEnum.ARGS_START},
             StatesEnum.ARGS_START: {"{": StatesEnum.PARAM_KEY},
-            StatesEnum.PARAM_KEY: {":": StatesEnum.PARAM_VALUE},
+            StatesEnum.PARAM_KEY: {
+                ":": StatesEnum.PARAM_VALUE,
+                "}": StatesEnum.JSON_END
+            },
             StatesEnum.PARAM_VALUE: {
                 ",": StatesEnum.PARAM_KEY,
                 "}": StatesEnum.JSON_END,
@@ -51,7 +54,19 @@ class JSONFSM:
 
         # Handle structural states
         if self.state != StatesEnum.PARAM_VALUE:
+            # Check if all parameters have been used
+            is_full = False
+            if self.state == StatesEnum.PARAM_KEY and self.current_fn:
+                params = self.current_fn.parameters
+                is_full = len(self.used_params) == len(params)
+
             for i, token in enumerate(decoded_vocabulary):
+                # If no params left, only closing brace is valid
+                if is_full:
+                    if "}".startswith(self.buffer + token):
+                        allowed_tokens.append(i)
+                    continue
+
                 if validator.is_token_valid(
                     self.state,
                     self.buffer,
@@ -145,7 +160,10 @@ class JSONFSM:
                 before, trigger, remaining = remaining.partition(first_trigger)
 
                 combined = self.buffer + before
-                is_structural = exp_type is None
+                is_structural = (
+                    exp_type is None or
+                    (self.state == StatesEnum.PARAM_KEY and trigger == "}")
+                )
                 is_valid = validator.validate_buffer(combined, exp_type or "")
 
                 # Check if it's an actual trigger
