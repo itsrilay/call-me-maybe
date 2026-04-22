@@ -104,7 +104,7 @@ class JSONValidator:
                 # Allow data, even escaped quotes
                 return True
 
-        elif param_type == "number":
+        elif param_type in {"number", "integer"}:
             first_char = stripped_text[0]
 
             # Must start with a digit or minus sign
@@ -126,7 +126,10 @@ class JSONValidator:
                 return False
 
             # Reject invalid chars
-            allowed_chars = set("0123456789.-+eE")
+            if param_type == "number":
+                allowed_chars = set("0123456789.-+eE")
+            else:
+                allowed_chars = set("0123456789-")
             if not all(char in allowed_chars for char in token):
                 return False
 
@@ -205,8 +208,22 @@ class JSONValidator:
             if ".e" in lower_buf:
                 return False
 
+            # Force float value
+            if "." not in stripped_buf:
+                return False
+
             try:
                 float(stripped_buf)
+                return True
+            except ValueError:
+                return False
+
+        elif param_type == "integer":
+            # Cannot end in a minus sign
+            if stripped_buf == "-":
+                return False
+            try:
+                int(stripped_buf)
                 return True
             except ValueError:
                 return False
@@ -257,5 +274,5 @@ class JSONValidator:
                 buffer, token, current_fn, current_param
             )
         elif state == StatesEnum.JSON_END:
-            return "}".startswith(token)
+            return "}".startswith(buffer + token)
         return False
