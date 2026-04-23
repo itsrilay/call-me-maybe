@@ -37,11 +37,18 @@ class GenerationPipeline:
         }
 
         self.system_prompt = (
-            "You are an expert AI assistant. Your task is to call"
-            " a function to help the user.\n"
-            "\nBased on the user's query, output ONLY a JSON "
-            "object calling the correct function.\n"
-            "You have access to the following functions:\n\n"
+            "You are a structured data extraction engine. Translate the user's"
+            " request directly into a JSON function call.\n\n"
+            "Output ONLY valid JSON.\n\n"
+            "### EXAMPLES ###\n"
+            "User prompt: Execute the script at /usr/local/bin/start.sh "
+            "on the primary node\n"
+            'Assistant: {"name": "fn_execute", "parameters": '
+            '{"path": "/usr/local/bin/start.sh", "target": "primary"}}\n\n'
+            'User prompt: Render string: Welcome "{user}" to the team\n'
+            'Assistant: {"name": "fn_render", "parameters": '
+            '{"template": "Welcome \\"{user}\\" to the team"}}\n\n'
+            "### AVAILABLE FUNCTIONS ###\n"
         )
 
         for fn in self.fn_defs:
