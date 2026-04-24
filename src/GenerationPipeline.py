@@ -82,17 +82,36 @@ class GenerationPipeline:
                 self.decoded_vocabulary, self.validator
             )
 
-            logits = self.model.get_logits_from_input_ids(input_ids_list)
+            if not allowed_tokens:
+                break
 
-            logit_mask = np.full(len(logits), -float("inf"))
+            # Convert token ids to strings
+            allowed_strings = [
+                self.decoded_vocabulary[i] for i in allowed_tokens
+            ]
 
-            logit_mask[allowed_tokens] = 0.0
+            longest_str = max(allowed_strings, key=len)
 
-            logits_arr = np.array(logits)
+            # If every allowed token is just a prefix of the longest string
+            # The LLM has no choice, it must choose the longest string
+            is_deterministic = all(
+                longest_str.startswith(s) for s in allowed_strings
+            )
 
-            final_scores = logits_arr + logit_mask
+            if is_deterministic:
+                # Bypass LLM, force the longest string
+                token_id = allowed_tokens[allowed_strings.index(longest_str)]
 
-            token_id = int(np.argmax(final_scores))
+            else:
+                # Use model inference
+                logits = self.model.get_logits_from_input_ids(input_ids_list)
+
+                logit_mask = np.full(len(logits), -float("inf"))
+                logit_mask[allowed_tokens] = 0.0
+                logits_arr = np.array(logits)
+                final_scores = logits_arr + logit_mask
+
+                token_id = int(np.argmax(final_scores))
 
             input_ids_list.append(token_id)
 
