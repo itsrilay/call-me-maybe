@@ -57,7 +57,7 @@ class GenerationPipeline:
         try:
             with open(f"{model.get_path_to_vocab_file()}") as file:
                 self.vocabulary: list[str] = json.load(file)
-        except FileNotFoundError:
+        except (FileNotFoundError, json.JSONDecodeError):
             print("Couldn't parse LLM vocabulary", file=sys.stderr)
             sys.exit(1)
 

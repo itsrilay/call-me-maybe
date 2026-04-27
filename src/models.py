@@ -16,6 +16,15 @@ class ParameterDetail(BaseModel):
     type: str
 
 
+class PromptInput(BaseModel):
+    """Schema for a single natural language prompt from the input file.
+
+    Attributes:
+        prompt: The natural language request string.
+    """
+    prompt: str
+
+
 class FunctionDefinition(BaseModel):
     """Schema definition for an available callable function.
 

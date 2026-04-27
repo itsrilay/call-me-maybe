@@ -9,12 +9,10 @@ import json
 import sys
 import os
 from typing import Any
-from src.models import FunctionDefinition
+from src.models import FunctionDefinition, PromptInput
 from src.GenerationPipeline import GenerationPipeline
 from llm_sdk import Small_LLM_Model
-
-
-MAX_TOKENS = 256
+from pydantic import ValidationError, TypeAdapter
 
 
 def load_json_file(filepath: str) -> list[Any]:
@@ -32,10 +30,40 @@ def load_json_file(filepath: str) -> list[Any]:
     try:
         with open(filepath) as file:
             data: list[Any] = json.load(file)
+            if not isinstance(data, list):
+                print(
+                    f"Error: {filepath} must contain a JSON array.",
+                    file=sys.stderr
+                )
+                sys.exit(1)
             return data
     except (FileNotFoundError, json.JSONDecodeError):
         print(f"Error while loading {filepath}.")
         sys.exit(1)
+
+
+def format_pydantic_error(e: ValidationError) -> str:
+    """Formats a Pydantic ValidationError into a readable string.
+
+    Args:
+        e (ValidationError): The caught Pydantic exception.
+
+    Returns:
+        str: A simplified error message focusing on the missing/invalid fields.
+    """
+    messages = []
+    for error in e.errors():
+        # Field path is a tuple, e.g., ('prompt',)
+        field = " -> ".join(str(loc) for loc in error["loc"])
+        message = error["msg"]
+        # Include the input that caused the issue for better debugging
+        input_val = error.get("input")
+
+        messages.append(
+            f" - Field '{field}': {message} (Received: {input_val})"
+        )
+
+    return "\n".join(messages)
 
 
 def main() -> None:
@@ -68,23 +96,39 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    fn_defs: list[FunctionDefinition] = [
-        FunctionDefinition(**fn) for fn
-        in load_json_file(args.functions_definition)
-    ]
+    # Validate function definitions
+    try:
+        fn_adapter = TypeAdapter(list[FunctionDefinition])
+        raw_fn_data = load_json_file(args.functions_definition)
+        fn_defs = fn_adapter.validate_python(raw_fn_data)
+    except ValidationError as e:
+        print(
+            "Error: Invalid function definition schema:\n",
+            format_pydantic_error(e),
+            file=sys.stderr
+        )
+        sys.exit(1)
 
-    prompts: list[dict[str, str]] = [
-        prompt for prompt
-        in load_json_file(args.input)
-    ]
+    # Validate prompts
+    try:
+        prompt_adapter = TypeAdapter(list[PromptInput])
+        raw_prompt_data = load_json_file(args.input)
+        prompts = prompt_adapter.validate_python(raw_prompt_data)
+    except ValidationError as e:
+        print(
+            "Error: Invalid prompt input schema:\n",
+            format_pydantic_error(e),
+            file=sys.stderr
+        )
+        sys.exit(1)
 
     model = Small_LLM_Model()
 
     all_results = []
     pipeline = GenerationPipeline(model, fn_defs)
 
-    for prompt in prompts:
-        prompt_text = prompt["prompt"]
+    for prompt_obj in prompts:
+        prompt_text = prompt_obj.prompt
         print(f"\nProcessing: {prompt_text}")
 
         result = pipeline.run(prompt_text)
@@ -100,11 +144,18 @@ def main() -> None:
     output_dir = os.path.dirname(args.output)
 
     # Create the directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+    try:
+        os.makedirs(output_dir, exist_ok=True)
 
-    # Save everything at the end
-    with open(args.output, "w") as f:
-        json.dump(all_results, f, indent=4)
+        # Save everything at the end
+        with open(args.output, "w") as f:
+            json.dump(all_results, f, indent=4)
+    except OSError as e:
+        print(
+            f"Error: Could not write output to {args.output}: {e}",
+            file=sys.stderr
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
