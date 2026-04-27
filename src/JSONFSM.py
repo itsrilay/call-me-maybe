@@ -1,10 +1,45 @@
+"""Finite State Machine for JSON structural generation.
+
+This module defines the JSONFSM class, which tracks the current syntactic
+state of the generated JSON (e.g., inside a key, inside a value, looking
+for a comma) and determines which characters are legally allowed next.
+"""
 from src.models import FunctionDefinition
 from src.common import StatesEnum
 from src.JSONValidator import JSONValidator
 
 
 class JSONFSM:
+    """Tracks and enforces the structural state of JSON generation.
+
+    The FSM ensures that the output strictly follows the syntax required
+    for a valid function call. It manages transitions between structural
+    elements like braces, quotes, colons, and commas.
+
+    Attributes:
+        fn_map (dict[str, FunctionDefinition]): Mapping of function names
+            to their definition objects.
+        state (StatesEnum): The current state of the JSON generation.
+        current_fn (FunctionDefinition | None): The function currently
+            being targeted by the generation.
+        current_param (str | None): The specific parameter currently
+            being generated.
+        used_params (set[str]): A set tracking which parameters have
+            already been generated to prevent duplication.
+        buffer (str): Accumulates tokens generated within the current state.
+        full_json (str): The complete JSON string generated so far.
+        transitions (dict): A mapping of current states and trigger
+            characters to their subsequent states.
+        STATE_DEFINITIONS (dict): Maps states to their expected data
+            types (e.g., "string" for keys).
+    """
     def __init__(self, fn_defs: list[FunctionDefinition]):
+        """Initializes the JSONFSM with the available functions.
+
+        Args:
+            fn_defs (list[FunctionDefinition]): A list of valid function
+                schemas the FSM can transition into.
+        """
         self.fn_map: dict[str, FunctionDefinition] = {
             fn.name: fn for fn in fn_defs
         }
@@ -47,6 +82,19 @@ class JSONFSM:
     def get_allowed_tokens(
         self, decoded_vocabulary: list[str], validator: JSONValidator
     ) -> list[int]:
+        """Calculates which tokens are legally allowed next.
+
+        Uses the current FSM state, the buffer, and the validator to evaluate
+        every token in the vocabulary.
+
+        Args:
+            decoded_vocabulary (list[str]): The full list of token strings.
+            validator (JSONValidator): The validation engine used to test
+                token legality.
+
+        Returns:
+            list[int]: A list of token IDs that are valid continuations.
+        """
         allowed_tokens: list[int] = []
 
         if self.state == StatesEnum.END:
@@ -138,6 +186,17 @@ class JSONFSM:
     def update_state(
         self, last_token_text: str, validator: JSONValidator
     ) -> None:
+        """Updates the FSM's internal state based on the generated token.
+
+        Checks the newly generated token for state transition triggers (like
+        commas or colons). If a trigger is found and the buffer is valid,
+        it transitions to the next state and resets the buffer.
+
+        Args:
+            last_token_text (str): The text of the newly generated token.
+            validator (JSONValidator): The validation engine used to verify
+                if a state transition is legal.
+        """
         if self.state == StatesEnum.END:
             return
 

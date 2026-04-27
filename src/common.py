@@ -1,3 +1,4 @@
+"""Common enumerations and constants used across the pipeline."""
 from enum import Enum, auto
 
 
@@ -10,6 +11,11 @@ class StrEnum(str, Enum):
 
 
 class StatesEnum(StrEnum):
+    """Represents the structural states of the JSON generation FSM.
+
+    These states track which part of the JSON function call is currently
+    being generated, determining which tokens are valid continuations.
+    """
     START = auto()
     NAME_KEY = auto()
     NAME_VALUE = auto()

@@ -1,3 +1,9 @@
+"""Entry point for the call-me-maybe function calling tool.
+
+This script parses command-line arguments, loads the necessary JSON
+schemas and test prompts, initializes the LLM and the GenerationPipeline,
+and processes each prompt to output the final constrained JSON calls.
+"""
 import argparse
 import json
 import sys
@@ -12,6 +18,17 @@ MAX_TOKENS = 256
 
 
 def load_json_file(filepath: str) -> list[Any]:
+    """Loads and parses a JSON file.
+
+    Args:
+        filepath (str): The path to the JSON file to be loaded.
+
+    Returns:
+        list[Any]: The parsed JSON content, typically a list of dictionaries.
+
+    Raises:
+        SystemExit: If the file is not found or contains invalid JSON.
+    """
     try:
         with open(filepath) as file:
             return json.load(file)
@@ -21,6 +38,12 @@ def load_json_file(filepath: str) -> list[Any]:
 
 
 def main() -> None:
+    """Main execution function for the CLI tool.
+
+    Parses arguments, sets up the LLM pipeline, iterates over all provided
+    user prompts, runs the constrained decoding generation, and writes the
+    structured output to the specified destination file.
+    """
     parser = argparse.ArgumentParser(
         prog="call-me-maybe",
         description="Function calling tool"

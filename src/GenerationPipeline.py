@@ -1,3 +1,9 @@
+"""Pipeline for generating structurally constrained JSON function calls.
+
+This module orchestrates the interaction between the LLM, the Finite
+State Machine (FSM), and the JSON Validator to ensure that all generated
+tokens conform to a strict JSON schema.
+"""
 from src.models import FunctionDefinition, FunctionCall
 from src.JSONValidator import JSONValidator
 from src.JSONFSM import JSONFSM
@@ -10,12 +16,40 @@ import numpy as np
 
 
 class GenerationPipeline:
+    """Orchestrates the constrained decoding process.
+
+    This class manages the token generation loop, applying logit masks
+    based on FSM constraints, and implementing performance optimizations
+    like the deterministic bypass.
+
+    Attributes:
+        MAX_TOKENS (int): The absolute maximum number of tokens to generate.
+        model (Small_LLM_Model): The LLM SDK instance used for inference.
+        fn_defs (list[FunctionDefinition]): The available functions.
+        vocabulary (list[str]): The raw string vocabulary loaded from model.
+        decoded_vocabulary (list[str]): The fully decoded token strings.
+        validator (JSONValidator): The validation engine for JSON syntax.
+        logit_mask (np.ndarray): A pre-allocated NumPy array for logit masking.
+        token_to_id (dict[str, int]): Mapping of string tokens to their IDs.
+        system_prompt (str): The initial context and instructions for the LLM.
+    """
 
     MAX_TOKENS = 256
 
     def __init__(
         self, model: Small_LLM_Model, fn_defs: list[FunctionDefinition]
     ) -> None:
+        """Initializes the GenerationPipeline.
+
+        Sets up the FSM validator, loads the vocabulary, calculates the
+        true logit size via a dummy inference, and pre-allocates memory
+        for the NumPy mask to maximize generation speed.
+
+        Args:
+            model (Small_LLM_Model): The loaded LLM model interface.
+            fn_defs (list[FunctionDefinition]): A list of valid function
+                schemas.
+        """
         self.model = model
         self.fn_defs = fn_defs
 
@@ -68,6 +102,19 @@ class GenerationPipeline:
         print(self.system_prompt)
 
     def run(self, user_question: str) -> FunctionCall | None:
+        """Executes the constrained generation loop for a user prompt.
+
+        Evaluates the prompt token-by-token. It uses a deterministic bypass
+        to skip the LLM forward pass when only one structural path is valid,
+        and uses constrained logit masking when semantic choices are required.
+
+        Args:
+            user_question (str): The natural language query from the user.
+
+        Returns:
+            FunctionCall | None: A Pydantic model containing the parsed JSON
+                call, or None if generation failed or produced invalid JSON.
+        """
         full_prompt = (
             f"{self.system_prompt}\n\n" +
             f"User prompt: {user_question}\n\n" +

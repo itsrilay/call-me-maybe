@@ -1,13 +1,48 @@
+"""JSON token validation engine.
+
+This module provides the JSONValidator class, which contains the logic
+to evaluate whether a specific token or sequence of characters is legally
+allowed in a strict JSON string, adhering to both JSON syntax rules and
+specific function parameter types.
+"""
 from src.common import StatesEnum
 from src.models import FunctionDefinition
 
 
 class JSONValidator:
+    """Validates tokens and buffers against JSON schemas.
+
+    This class provides validation methods to ensure that generated text
+    conforms to expected structural prefixes (like `{"name":`) and
+    semantic types (like `number` or `boolean`).
+
+    Attributes:
+        fn_defs (list[FunctionDefinition]): The available functions.
+        valid_fn_names (list[str]): Extracted names of the allowed functions.
+        prefix_lookups (dict[StatesEnum, set[str]]): Pre-computed sets of
+            valid prefixes for structural elements.
+        param_prefix_lookups (dict[str, dict[str, set[str]]]): Pre-computed
+            valid prefixes for parameter keys, mapped by function name.
+        structural_id_cache (dict[StatesEnum, list[int]]): Pre-computed
+            valid token IDs for empty-buffer structural states.
+    """
     def __init__(
         self,
         fn_defs: list[FunctionDefinition],
         decoded_vocabulary: list[str]
     ) -> None:
+        """Initializes the JSONValidator.
+
+        Pre-calculates all valid prefix strings for structural JSON elements
+        and caches the valid token IDs for empty-buffer states to optimize
+        the generation loop.
+
+        Args:
+            fn_defs (list[FunctionDefinition]): Definitions of available
+                functions.
+            decoded_vocabulary (list[str]): The vocabulary list of string
+                tokens from the model.
+        """
         self.fn_defs = fn_defs
         self.valid_fn_names: list[str] = [fn.name for fn in fn_defs]
 
@@ -46,10 +81,29 @@ class JSONValidator:
     def _validate_fixed(
         self, state: StatesEnum, buffer: str, token: str
     ) -> bool:
+        """Validates a token against fixed structural prefixes.
+
+        Args:
+            state (StatesEnum): The current FSM state.
+            buffer (str): The text already generated in this state.
+            token (str): The prospective next token.
+
+        Returns:
+            bool: True if the combined text is a valid prefix, False otherwise.
+        """
         text = buffer + token
         return text in self.prefix_lookups[state]
 
     def _validate_name(self, buffer: str, token: str) -> bool:
+        """Validates a token against the allowed function names.
+
+        Args:
+            buffer (str): The text already generated in this state.
+            token (str): The prospective next token.
+
+        Returns:
+            bool: True if the combined text forms a valid function name.
+        """
         text = buffer + token
         return text in self.prefix_lookups[StatesEnum.NAME_VALUE]
 
@@ -60,6 +114,20 @@ class JSONValidator:
         current_fn: FunctionDefinition | None,
         used_params: set[str]
     ) -> bool:
+        """Validates a token for a parameter key.
+
+        Ensures that the generated key corresponds to an actual parameter
+        of the current function and that it has not been generated yet.
+
+        Args:
+            buffer (str): The text already generated in this state.
+            token (str): The prospective next token.
+            current_fn (FunctionDefinition | None): The target function.
+            used_params (set[str]): Keys that have already been generated.
+
+        Returns:
+            bool: True if the token is valid for an unused parameter key.
+        """
         if not current_fn:
             return False
 
@@ -77,6 +145,20 @@ class JSONValidator:
         current_fn: FunctionDefinition | None,
         current_param: str | None
     ) -> bool:
+        """Validates a token based on the required data type of the parameter.
+
+        Applies strict JSON syntax rules for strings (handling escapes),
+        numbers (handling decimals and signs), booleans, and nulls.
+
+        Args:
+            buffer (str): The text already generated for this parameter.
+            token (str): The prospective next token.
+            current_fn (FunctionDefinition | None): The target function.
+            current_param (str | None): The specific parameter name.
+
+        Returns:
+            bool: True if the token is legally allowed for the data type.
+        """
         if not current_fn or not current_param:
             return False
 
@@ -197,6 +279,14 @@ class JSONValidator:
         return False
 
     def build_prefix_set(self, targets: list[str]) -> set[str]:
+        """Generates all possible incremental prefixes for target strings.
+
+        Args:
+            targets (list[str]): A list of full strings to break down.
+
+        Returns:
+            set[str]: A set containing every progressive substring of targets.
+        """
         prefix_set: set[str] = set()
         for name in targets:
             for i in range(1, len(name) + 1):
@@ -205,6 +295,18 @@ class JSONValidator:
         return prefix_set
 
     def validate_buffer(self, buffer: str, param_type: str) -> bool:
+        """Validates if a complete buffer strictly adheres to a type.
+
+        This method is used before transitioning FSM states to ensure
+        the accumulated token sequence forms a complete, valid value.
+
+        Args:
+            buffer (str): The accumulated text for the parameter.
+            param_type (str): The required type ("string", "number", etc.).
+
+        Returns:
+            bool: True if the buffer forms a complete and valid value.
+        """
         stripped_buf = buffer.strip()
         if not stripped_buf:
             return False
@@ -269,6 +371,22 @@ class JSONValidator:
         current_fn: FunctionDefinition | None = None,
         current_param: str | None = None
     ) -> bool:
+        """Main routing method to evaluate token validity for current state.
+
+        Delegates the check to specific sub-methods depending on the
+        current phase of the JSON generation.
+
+        Args:
+            state (StatesEnum): The current FSM state.
+            buffer (str): The text already generated in this state.
+            token (str): The prospective next token.
+            used_params (set[str]): Parameters already populated in the JSON.
+            current_fn (FunctionDefinition | None): The target function.
+            current_param (str | None): The specific parameter name.
+
+        Returns:
+            bool: True if the token is valid for the current state context.
+        """
         if state == StatesEnum.START:
             return '{"name":'.startswith(buffer + token)
         elif state in [StatesEnum.NAME_KEY, StatesEnum.ARGS_KEY]:
