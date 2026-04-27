@@ -1,12 +1,15 @@
 """Common enumerations and constants used across the pipeline."""
 from enum import Enum, auto
+from typing import Any
 
 
 class StrEnum(str, Enum):
     """Base class where auto() assigns the name of the member as its value."""
 
     @staticmethod
-    def _generate_next_value_(name, start, count, last_values):
+    def _generate_next_value_(
+        name: str, start: int, count: int, last_values: list[Any]
+    ) -> str:
         return name
 
 

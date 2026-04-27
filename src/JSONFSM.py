@@ -33,7 +33,7 @@ class JSONFSM:
         STATE_DEFINITIONS (dict): Maps states to their expected data
             types (e.g., "string" for keys).
     """
-    def __init__(self, fn_defs: list[FunctionDefinition]):
+    def __init__(self, fn_defs: list[FunctionDefinition]) -> None:
         """Initializes the JSONFSM with the available functions.
 
         Args:
@@ -44,8 +44,8 @@ class JSONFSM:
             fn.name: fn for fn in fn_defs
         }
         self.state = StatesEnum.START
-        self.current_fn = None
-        self.current_param = None
+        self.current_fn: FunctionDefinition | None = None
+        self.current_param: str | None = None
         self.used_params: set[str] = set()
         self.buffer = ""  # Text within a state
         self.full_json = ""  # Complete Output

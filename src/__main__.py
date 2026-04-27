@@ -31,7 +31,8 @@ def load_json_file(filepath: str) -> list[Any]:
     """
     try:
         with open(filepath) as file:
-            return json.load(file)
+            data: list[Any] = json.load(file)
+            return data
     except (FileNotFoundError, json.JSONDecodeError):
         print(f"Error while loading {filepath}.")
         sys.exit(1)

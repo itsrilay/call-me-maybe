@@ -6,17 +6,27 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "accelerate>=1.13.0",
-    "flake8>=7.3.0",
     "llm-sdk",
-    "mypy>=1.19.1",
     "numpy>=2.2.6",
     "pydantic>=2.12.5",
+]
+
+[dependency-groups]
+dev = [
+    "flake8>=7.3.0",
+    "mypy>=1.20.2",
 ]
 
 [tool.mypy]
 exclude = [
     "^llm_sdk/$"
 ]
+
+[[tool.mypy.overrides]]
+module = ["llm_sdk"]
+ignore_missing_imports = true
+follow_imports = "skip"
+ignore_errors = true
 
 [tool.uv.workspace]
 members = [
