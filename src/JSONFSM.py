@@ -75,6 +75,7 @@ class JSONFSM:
                     self.state,
                     self.buffer,
                     token,
+                    self.used_params,
                     self.current_fn,
                     self.current_param
                 ):
@@ -126,6 +127,7 @@ class JSONFSM:
                     self.state,
                     self.buffer,
                     token,
+                    self.used_params,
                     self.current_fn,
                     self.current_param
                 ):
@@ -195,6 +197,7 @@ class JSONFSM:
                     self.state,
                     self.buffer,
                     remaining,
+                    self.used_params,
                     self.current_fn,
                     self.current_param
                 ):

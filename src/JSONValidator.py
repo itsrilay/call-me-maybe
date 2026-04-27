@@ -22,9 +22,10 @@ class JSONValidator:
         }
 
         self.param_prefix_lookups = {
-            fn.name: self.build_prefix_set(
-                [f'"{param}":' for param in fn.parameters]
-            )
+            fn.name: {
+                param: self.build_prefix_set([f'"{param}":'])
+                for param in fn.parameters
+            }
             for fn in fn_defs
         }
 
@@ -38,7 +39,7 @@ class JSONValidator:
         ]:
             allowed_ids = []
             for i, token in enumerate(decoded_vocabulary):
-                if self.is_token_valid(state, "", token):
+                if self.is_token_valid(state, "", token, used_params=set()):
                     allowed_ids.append(i)
             self.structural_id_cache[state] = allowed_ids
 
@@ -57,12 +58,17 @@ class JSONValidator:
         buffer: str,
         token: str,
         current_fn: FunctionDefinition | None,
+        used_params: set[str]
     ) -> bool:
         if not current_fn:
             return False
 
         text = buffer + token
-        return text in self.param_prefix_lookups[current_fn.name]
+        return any(
+            text in self.param_prefix_lookups[current_fn.name][p]
+            for p in current_fn.parameters
+            if p not in used_params
+        )
 
     def _validate_param_value(
         self,
@@ -259,6 +265,7 @@ class JSONValidator:
         state: StatesEnum,
         buffer: str,
         token: str,
+        used_params: set[str],
         current_fn: FunctionDefinition | None = None,
         current_param: str | None = None
     ) -> bool:
@@ -284,9 +291,13 @@ class JSONValidator:
             if current_fn and not current_fn.parameters:
                 return "}".startswith(remainder)
 
-            return self._validate_param_key("", text[1:], current_fn)
+            return self._validate_param_key(
+                "", text[1:], current_fn, used_params
+            )
         elif state == StatesEnum.PARAM_KEY:
-            return self._validate_param_key(buffer, token, current_fn)
+            return self._validate_param_key(
+                buffer, token, current_fn, used_params
+            )
         elif state == StatesEnum.PARAM_VALUE:
             return self._validate_param_value(
                 buffer, token, current_fn, current_param
