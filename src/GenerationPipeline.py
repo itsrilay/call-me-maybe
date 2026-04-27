@@ -18,7 +18,6 @@ class GenerationPipeline:
     ) -> None:
         self.model = model
         self.fn_defs = fn_defs
-        self.validator = JSONValidator(fn_defs)
 
         # Get vocabulary
         try:
@@ -31,6 +30,12 @@ class GenerationPipeline:
         self.decoded_vocabulary = [
             self.model.decode([i]) for i in range(len(self.vocabulary))
         ]
+
+        self.validator = JSONValidator(fn_defs, self.decoded_vocabulary)
+
+        dummy_logits = self.model.get_logits_from_input_ids([0])
+        logit_size = len(dummy_logits)
+        self.logit_mask = np.empty(logit_size, dtype=np.float32)
 
         self.token_to_id = {
             token: id for id, token in enumerate(self.vocabulary)
@@ -105,13 +110,14 @@ class GenerationPipeline:
             else:
                 # Use model inference
                 logits = self.model.get_logits_from_input_ids(input_ids_list)
+                logits_arr = np.array(logits, dtype=np.float32)
 
-                logit_mask = np.full(len(logits), -float("inf"))
-                logit_mask[allowed_tokens] = 0.0
-                logits_arr = np.array(logits)
-                final_scores = logits_arr + logit_mask
+                self.logit_mask.fill(-np.inf)
+                self.logit_mask[allowed_tokens] = 0.0
 
-                token_id = int(np.argmax(final_scores))
+                logits_arr += self.logit_mask
+
+                token_id = int(np.argmax(logits_arr))
 
             input_ids_list.append(token_id)
 

@@ -3,7 +3,11 @@ from src.models import FunctionDefinition
 
 
 class JSONValidator:
-    def __init__(self, fn_defs: list[FunctionDefinition]) -> None:
+    def __init__(
+        self,
+        fn_defs: list[FunctionDefinition],
+        decoded_vocabulary: list[str]
+    ) -> None:
         self.fn_defs = fn_defs
         self.valid_fn_names: list[str] = [fn.name for fn in fn_defs]
 
@@ -23,6 +27,20 @@ class JSONValidator:
             )
             for fn in fn_defs
         }
+
+        self.structural_id_cache: dict[StatesEnum, list[int]] = {}
+
+        for state in [
+            StatesEnum.START,
+            StatesEnum.NAME_KEY,
+            StatesEnum.ARGS_KEY,
+            StatesEnum.JSON_END
+        ]:
+            allowed_ids = []
+            for i, token in enumerate(decoded_vocabulary):
+                if self.is_token_valid(state, "", token):
+                    allowed_ids.append(i)
+            self.structural_id_cache[state] = allowed_ids
 
     def _validate_fixed(
         self, state: StatesEnum, buffer: str, token: str

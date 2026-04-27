@@ -52,6 +52,10 @@ class JSONFSM:
         if self.state == StatesEnum.END:
             return []
 
+        # Fast path for structural states (cache)
+        if not self.buffer and self.state in validator.structural_id_cache:
+            return validator.structural_id_cache[self.state]
+
         # Handle structural states
         if self.state != StatesEnum.PARAM_VALUE:
             # Check if all parameters have been used
