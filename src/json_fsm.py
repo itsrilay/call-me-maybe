@@ -6,7 +6,7 @@ for a comma) and determines which characters are legally allowed next.
 """
 from src.models import FunctionDefinition
 from src.common import StatesEnum
-from src.JSONValidator import JSONValidator
+from src.json_validator import JSONValidator
 
 
 class JSONFSM:

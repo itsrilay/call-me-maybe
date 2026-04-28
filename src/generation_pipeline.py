@@ -5,8 +5,8 @@ State Machine (FSM), and the JSON Validator to ensure that all generated
 tokens conform to a strict JSON schema.
 """
 from src.models import FunctionDefinition, FunctionCall
-from src.JSONValidator import JSONValidator
-from src.JSONFSM import JSONFSM
+from src.json_validator import JSONValidator
+from src.json_fsm import JSONFSM
 from src.common import StatesEnum
 from llm_sdk import Small_LLM_Model
 from pydantic import ValidationError
@@ -175,6 +175,12 @@ class GenerationPipeline:
 
             fsm.update_state(token_string, self.validator)
 
+        if tokens_generated >= self.MAX_TOKENS:
+            print(
+                f"\nWarning: Hit MAX_TOKENS ({self.MAX_TOKENS}) limit.",
+                file=sys.stderr
+            )
+
         # Extract only the generated tokens
         generated_ids = input_ids_list[prompt_length:]
 
@@ -183,7 +189,9 @@ class GenerationPipeline:
 
         try:
             result = json.loads(final_json_string)
+            if not isinstance(result, dict):
+                raise ValueError("Generated JSON is not a dictionary.")
             return FunctionCall(prompt=user_question, **result)
-        except (ValidationError, json.JSONDecodeError) as e:
-            print(f"\nError processing prompt: {e}")
+        except (ValidationError, json.JSONDecodeError, ValueError) as e:
+            print(f"\nError processing prompt: {e}", file=sys.stderr)
             return None
