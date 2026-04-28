@@ -9,7 +9,7 @@ import sys
 import os
 from typing import Any
 from pydantic import ValidationError, TypeAdapter
-from src.models import FunctionDefinition, PromptInput
+from src.models import FunctionDefinition, PromptInput, ParameterDetail
 
 
 class IOHandler:
@@ -135,6 +135,18 @@ class IOHandler:
             if not fn_defs:
                 print("Error: No function definitions found.", file=sys.stderr)
                 sys.exit(1)
+
+            # Inject a universal fallback function if it doesn't exist
+            fallback_name = "fn_unsupported_request"
+            if not any(fn.name == fallback_name for fn in fn_defs):
+                fn_defs.append(FunctionDefinition(
+                    name=fallback_name,
+                    description="Call this function only when the user's "
+                                "request does not match any other available "
+                                "function.",
+                    parameters={"reason": ParameterDetail(type="string")},
+                    returns={"type": "string"}
+                ))
 
             return fn_defs
         except ValidationError as e:
