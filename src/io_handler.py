@@ -5,11 +5,11 @@ loading JSON files, validating them against Pydantic schemas, and safely
 saving results while preventing accidental overwrites of system files.
 """
 import json
-import sys
 import os
 from typing import Any
 from pydantic import ValidationError, TypeAdapter
 from src.models import FunctionDefinition, PromptInput, ParameterDetail
+from src.common import IOHandlerError
 
 
 class IOHandler:
@@ -54,32 +54,24 @@ class IOHandler:
         return "\n".join(messages)
 
     @staticmethod
-    def _read_raw_json(path: str) -> list[Any]:
-        """Loads and parses a JSON file, ensuring it is a list.
+    def _read_raw_json(path: str) -> Any:
+        """Loads and parses a JSON file from the specified path.
 
         Args:
             path (str): The path to the JSON file to be loaded.
 
         Returns:
-            list[Any]: The parsed JSON content.
+            Any: The parsed JSON content.
 
         Raises:
-            SystemExit: If the file is not found, contains invalid JSON,
-                or is not a JSON array.
+            IOHandlerError: If the file is not found or contains invalid JSON.
         """
         try:
             with open(path, encoding="utf-8") as file:
-                data: list[Any] = json.load(file)
-                if not isinstance(data, list):
-                    print(
-                        f"Error: {path} must contain a JSON array.",
-                        file=sys.stderr
-                    )
-                    sys.exit(1)
+                data: Any = json.load(file)
                 return data
         except (OSError, json.JSONDecodeError) as e:
-            print(f"Error while loading {path}: {e}", file=sys.stderr)
-            sys.exit(1)
+            raise IOHandlerError(f"Error while loading {path}: {e}")
 
     def is_path_safe(self, path: str) -> bool:
         """Determines if a path is safe to write to.
@@ -115,6 +107,37 @@ class IOHandler:
 
         return True
 
+    def load_vocabulary(self, path: str) -> dict[str, int]:
+        """Loads and validates the LLM token vocabulary from a JSON file.
+
+        Uses a TypeAdapter to ensure the file contains a dictionary mapping
+        token strings to their integer IDs and verifies the vocabulary is
+        not empty.
+
+        Args:
+            path (str): Path to the model's vocabulary JSON file.
+
+        Returns:
+            dict[str, int]: A validated dictionary of token-to-ID mappings.
+
+        Raises:
+            IOHandlerError: If the vocabulary is empty or invalid.
+        """
+        raw_vocab_data = self._read_raw_json(path)
+        try:
+            vocab_adapter = TypeAdapter(dict[str, int])
+            vocab = vocab_adapter.validate_python(raw_vocab_data)
+
+            if not vocab:
+                raise IOHandlerError("Error: Empty vocabulary.")
+
+            return vocab
+        except ValidationError as e:
+            raise IOHandlerError(
+                f"Invalid vocabulary schema in {path}: "
+                f"\n{self._format_error(e)}"
+            )
+
     def load_functions(self, path: str) -> list[FunctionDefinition]:
         """Loads and validates function definitions from a JSON file.
 
@@ -125,7 +148,7 @@ class IOHandler:
             list[FunctionDefinition]: A list of validated function schemas.
 
         Raises:
-            SystemExit: If the schema is invalid or no functions are found.
+            IOHandlerError: If the schema is invalid or no functions are found.
         """
         raw_fn_data = self._read_raw_json(path)
         try:
@@ -133,8 +156,7 @@ class IOHandler:
             fn_defs = fn_adapter.validate_python(raw_fn_data)
 
             if not fn_defs:
-                print("Error: No function definitions found.", file=sys.stderr)
-                sys.exit(1)
+                raise IOHandlerError("Error: No function definitions found.")
 
             # Inject a universal fallback function if it doesn't exist
             fallback_name = "fn_unsupported_request"
@@ -150,12 +172,10 @@ class IOHandler:
 
             return fn_defs
         except ValidationError as e:
-            print(
-                "Error: Invalid function definition schema:\n",
-                self._format_error(e),
-                file=sys.stderr
+            raise IOHandlerError(
+                "Error: Invalid function definition schema:\n"
+                f"{self._format_error(e)}"
             )
-            sys.exit(1)
 
     def load_prompts(self, path: str) -> list[PromptInput]:
         """Loads and validates prompts from a JSON file.
@@ -167,19 +187,17 @@ class IOHandler:
             list[PromptInput]: A list of validated prompt objects.
 
         Raises:
-            SystemExit: If the schema is invalid.
+            IOHandlerError: If the schema is invalid.
         """
         raw_prompt_data = self._read_raw_json(path)
         try:
             prompt_adapter = TypeAdapter(list[PromptInput])
             return prompt_adapter.validate_python(raw_prompt_data)
         except ValidationError as e:
-            print(
-                "Error: Invalid prompt input schema:\n",
-                self._format_error(e),
-                file=sys.stderr
+            raise IOHandlerError(
+                "Error: Invalid prompt input schema:\n"
+                f"{self._format_error(e)}"
             )
-            sys.exit(1)
 
     def save_results(self, path: str, results: list[dict[str, Any]]) -> None:
         """Safely saves results to a JSON file.
@@ -191,16 +209,14 @@ class IOHandler:
             results (list[dict[str, Any]]): The data to save as JSON.
 
         Raises:
-            SystemExit: If the path is dangerous or a write error occurs.
+            IOHandlerError: If the path is dangerous or a write error occurs.
         """
         # Check for source code or directory overwrite
         if not self.is_path_safe(path):
-            print(
+            raise IOHandlerError(
                 f"Error: Writing to {path} is forbidden. "
                 "Target is a protected project file or directory.",
-                file=sys.stderr
             )
-            sys.exit(1)
 
         try:
             output_dir = os.path.dirname(path)
@@ -210,8 +226,6 @@ class IOHandler:
             with open(path, "w", encoding="utf-8") as file:
                 json.dump(results, file, indent=4)
         except OSError as e:
-            print(
+            raise IOHandlerError(
                 f"Error: Could not write output to {path}: {e}",
-                file=sys.stderr
             )
-            sys.exit(1)

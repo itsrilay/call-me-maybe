@@ -3,7 +3,7 @@
 This module defines the schemas used to constrain the LLM decoding
 process and validate the final JSON outputs.
 """
-from typing import Any
+from typing import Any, Literal
 from pydantic import BaseModel
 
 
@@ -13,7 +13,7 @@ class ParameterDetail(BaseModel):
     Attributes:
         type: The data type of the parameter (e.g., "number", "string").
     """
-    type: str
+    type: Literal["string", "number", "integer", "boolean", "null"]
 
 
 class PromptInput(BaseModel):

@@ -10,6 +10,17 @@ class StrEnum(str, Enum):
     def _generate_next_value_(
         name: str, start: int, count: int, last_values: list[Any]
     ) -> str:
+        """Returns the member name as the value for auto() members.
+
+        Args:
+            name (str): The name of the enum member.
+            start (int): The starting value for the enum.
+            count (int): The current number of members.
+            last_values (list[Any]): A list of previously defined values.
+
+        Returns:
+            str: The name of the member as its value.
+        """
         return name
 
 
@@ -28,3 +39,13 @@ class StatesEnum(StrEnum):
     PARAM_VALUE = auto()
     JSON_END = auto()
     END = auto()
+
+
+class IOHandlerError(Exception):
+    """Custom exception for all IO and validation errors in the project."""
+    pass
+
+
+class NoPromptsFound(Exception):
+    """Custom exception for an empty prompt file."""
+    pass

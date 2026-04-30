@@ -30,9 +30,10 @@ class JSONFSM:
         full_json (str): The complete JSON string generated so far.
         transitions (dict): A mapping of current states and trigger
             characters to their subsequent states.
-        STATE_DEFINITIONS (dict): Maps states to their expected data
-            types (e.g., "string" for keys).
+        STATE_DEFINITIONS (dict[StatesEnum, str | None]): Maps states to their
+            expected data types (e.g., "string" for keys).
     """
+
     def __init__(self, fn_defs: list[FunctionDefinition]) -> None:
         """Initializes the JSONFSM with the available functions.
 

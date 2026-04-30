@@ -8,7 +8,44 @@ import argparse
 import sys
 from src.generation_pipeline import GenerationPipeline
 from src.io_handler import IOHandler
+from src.json_validator import JSONValidator
+from src.json_fsm import JSONFSM
+from src.common import IOHandlerError, NoPromptsFound
 from llm_sdk import Small_LLM_Model
+import numpy as np
+
+
+def prepare_resources(args: argparse.Namespace, io: IOHandler):
+    # Validate output path
+    if not io.is_path_safe(args.output):
+        raise IOHandlerError(
+            f"Error: The output path '{args.output}' is forbidden. "
+            "It targets a protected project file or directory.",
+        )
+
+    # Load and validate input
+    fn_defs = io.load_functions(args.functions_definition)
+    prompts = io.load_prompts(args.input)
+
+    # Exit early if no prompts
+    if not prompts:
+        raise NoPromptsFound(
+            "Input file is empty. Writing empty results and exiting."
+        )
+
+    # Prepare model and its vocabulary
+    model = Small_LLM_Model()
+    vocabulary = io.load_vocabulary(model.get_path_to_vocab_file())
+    decoded_vocabulary = [model.decode([i]) for i in range(len(vocabulary))]
+
+    # Prepare validator and logit mask
+    validator = JSONValidator(fn_defs, decoded_vocabulary)
+
+    dummy_logits = model.get_logits_from_input_ids([0])
+    logit_size = len(dummy_logits)
+    logit_mask = np.empty(logit_size, dtype=np.float32)
+
+    return (model, fn_defs, prompts, decoded_vocabulary, validator, logit_mask)
 
 
 def main() -> None:
@@ -44,31 +81,23 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-
     io = IOHandler()
 
-    # Validate output path
-    if not io.is_path_safe(args.output):
-        print(
-            f"Error: The output path '{args.output}' is forbidden. "
-            "It targets a protected project file or directory.",
-            file=sys.stderr
+    try:
+        model, fn_defs, prompts, decoded_vocabulary, validator, logit_mask = (
+            prepare_resources(args, io)
         )
+    except IOHandlerError as e:
+        print(f"Initialization Failed: {e}", file=sys.stderr)
         sys.exit(1)
-
-    # Load and validate input
-    fn_defs = io.load_functions(args.functions_definition)
-    prompts = io.load_prompts(args.input)
-
-    # Exit early if no prompts
-    if not prompts:
-        print("Input file is empty. Writing empty results and exiting.")
+    except NoPromptsFound as e:
+        print(f"Warning: {e}", file=sys.stderr)
         io.save_results(args.output, [])
         sys.exit(0)
 
-    # Prepare model and pipeline
-    model = Small_LLM_Model()
-    pipeline = GenerationPipeline(model, fn_defs)
+    pipeline = GenerationPipeline(
+        model, fn_defs, decoded_vocabulary, validator, logit_mask
+    )
 
     # Generation loop
     results = []
@@ -76,7 +105,8 @@ def main() -> None:
         prompt_text = prompt_obj.prompt
         print(f"\nProcessing: {prompt_text}")
 
-        result = pipeline.run(prompt_text)
+        fsm = JSONFSM(pipeline.fn_defs)
+        result = pipeline.run(prompt_text, fsm)
 
         if result is None:
             print(f"Skipping failed prompt: \"{prompt_text}\"")

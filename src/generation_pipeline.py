@@ -13,6 +13,7 @@ from pydantic import ValidationError
 import json
 import sys
 import numpy as np
+import numpy.typing as npt
 
 
 class GenerationPipeline:
@@ -26,54 +27,37 @@ class GenerationPipeline:
         MAX_TOKENS (int): The absolute maximum number of tokens to generate.
         model (Small_LLM_Model): The LLM SDK instance used for inference.
         fn_defs (list[FunctionDefinition]): The available functions.
-        vocabulary (list[str]): The raw string vocabulary loaded from model.
         decoded_vocabulary (list[str]): The fully decoded token strings.
         validator (JSONValidator): The validation engine for JSON syntax.
-        logit_mask (np.ndarray): A pre-allocated NumPy array for logit masking.
-        token_to_id (dict[str, int]): Mapping of string tokens to their IDs.
-        system_prompt (str): The initial context and instructions for the LLM.
+        logit_mask (npt.NDArray[np.float32]): Pre-allocated array for masking.
+        system_prompt (str): The context and instructions for the LLM.
     """
 
     MAX_TOKENS = 256
 
     def __init__(
-        self, model: Small_LLM_Model, fn_defs: list[FunctionDefinition]
+        self,
+        model: Small_LLM_Model,
+        fn_defs: list[FunctionDefinition],
+        decoded_vocabulary: list[str],
+        validator: JSONValidator,
+        logit_mask: npt.NDArray[np.float32]
     ) -> None:
-        """Initializes the GenerationPipeline.
-
-        Sets up the FSM validator, loads the vocabulary, calculates the
-        true logit size via a dummy inference, and pre-allocates memory
-        for the NumPy mask to maximize generation speed.
+        """Initializes the GenerationPipeline with injected dependencies.
 
         Args:
             model (Small_LLM_Model): The loaded LLM model interface.
-            fn_defs (list[FunctionDefinition]): A list of valid function
-                schemas.
+            fn_defs (list[FunctionDefinition]): List of valid function schemas.
+            decoded_vocabulary (list[str]): The fully decoded token strings.
+            validator (JSONValidator): The validation engine for JSON syntax.
+            logit_mask (npt.NDArray[np.float32]): Pre-allocated memory for
+                logit masking.
         """
         self.model = model
         self.fn_defs = fn_defs
-
-        # Get vocabulary
-        try:
-            with open(f"{model.get_path_to_vocab_file()}") as file:
-                self.vocabulary: list[str] = json.load(file)
-        except (FileNotFoundError, json.JSONDecodeError):
-            print("Couldn't parse LLM vocabulary", file=sys.stderr)
-            sys.exit(1)
-
-        self.decoded_vocabulary = [
-            self.model.decode([i]) for i in range(len(self.vocabulary))
-        ]
-
-        self.validator = JSONValidator(fn_defs, self.decoded_vocabulary)
-
-        dummy_logits = self.model.get_logits_from_input_ids([0])
-        logit_size = len(dummy_logits)
-        self.logit_mask = np.empty(logit_size, dtype=np.float32)
-
-        self.token_to_id = {
-            token: id for id, token in enumerate(self.vocabulary)
-        }
+        self.decoded_vocabulary = decoded_vocabulary
+        self.validator = validator
+        self.logit_mask = logit_mask
 
         self.system_prompt = (
             "You are a structured data extraction engine. Translate the user's"
@@ -101,34 +85,62 @@ class GenerationPipeline:
 
         print(self.system_prompt)
 
-    def run(self, user_question: str) -> FunctionCall | None:
-        """Executes the constrained generation loop for a user prompt.
+    def _apply_mask(
+        self, logits: list[float], allowed_tokens: list[int]
+    ) -> int:
+        """Applies the logit mask to constrain choices to allowed tokens.
 
-        Evaluates the prompt token-by-token. It uses a deterministic bypass
-        to skip the LLM forward pass when only one structural path is valid,
-        and uses constrained logit masking when semantic choices are required.
+        Converts logits to a NumPy array, applies a mask that sets illegal
+        tokens to -inf, and identifies the token with the highest probability.
 
         Args:
-            user_question (str): The natural language query from the user.
+            logits (list[float]): The raw logit output from the LLM.
+            allowed_tokens (list[int]): Indices of tokens that are valid
+                according to the FSM.
+
+        Returns:
+            int: The ID of the highest-scoring allowed token.
+        """
+        logits_arr = np.array(logits, dtype=np.float32)
+
+        self.logit_mask.fill(-np.inf)
+        self.logit_mask[allowed_tokens] = 0.0
+
+        logits_arr += self.logit_mask
+
+        token_id = int(np.argmax(logits_arr))
+
+        return token_id
+
+    def run(
+            self, user_prompt: str, fsm: JSONFSM, max_tokens: int | None = None
+    ) -> FunctionCall | None:
+        """Executes the constrained generation loop for a user prompt.
+
+        Args:
+            user_prompt (str): The natural language query from the user.
+            fsm (JSONFSM): The finite state machine tracking JSON structure.
+            max_tokens (int | None): An optional limit on generated tokens.
+                Defaults to MAX_TOKENS.
 
         Returns:
             FunctionCall | None: A Pydantic model containing the parsed JSON
-                call, or None if generation failed or produced invalid JSON.
+                call, or None if generation failed or timed out.
         """
         full_prompt = (
             f"{self.system_prompt}\n\n" +
-            f"User prompt: {user_question}\n\n" +
+            f"User prompt: {user_prompt}\n\n" +
             "Assistant: "
         )
 
         input_ids_list: list[int] = self.model.encode(full_prompt)[0].tolist()
         prompt_length = len(input_ids_list)
+
+        limit = max_tokens if max_tokens else self.MAX_TOKENS
         tokens_generated = 0
 
-        fsm = JSONFSM(self.fn_defs)
-
         while (
-            fsm.state != StatesEnum.END and tokens_generated < self.MAX_TOKENS
+            fsm.state != StatesEnum.END and tokens_generated < limit
         ):
             allowed_tokens = fsm.get_allowed_tokens(
                 self.decoded_vocabulary, self.validator
@@ -157,14 +169,7 @@ class GenerationPipeline:
             else:
                 # Use model inference
                 logits = self.model.get_logits_from_input_ids(input_ids_list)
-                logits_arr = np.array(logits, dtype=np.float32)
-
-                self.logit_mask.fill(-np.inf)
-                self.logit_mask[allowed_tokens] = 0.0
-
-                logits_arr += self.logit_mask
-
-                token_id = int(np.argmax(logits_arr))
+                token_id = self._apply_mask(logits, allowed_tokens)
 
             input_ids_list.append(token_id)
 
@@ -175,9 +180,9 @@ class GenerationPipeline:
 
             fsm.update_state(token_string, self.validator)
 
-        if tokens_generated >= self.MAX_TOKENS:
+        if tokens_generated >= limit:
             print(
-                f"\nWarning: Hit MAX_TOKENS ({self.MAX_TOKENS}) limit.",
+                f"\nWarning: Hit max token ({limit}) limit.",
                 file=sys.stderr
             )
 
@@ -191,7 +196,7 @@ class GenerationPipeline:
             result = json.loads(final_json_string)
             if not isinstance(result, dict):
                 raise ValueError("Generated JSON is not a dictionary.")
-            return FunctionCall(prompt=user_question, **result)
+            return FunctionCall(prompt=user_prompt, **result)
         except (ValidationError, json.JSONDecodeError, ValueError) as e:
             print(f"\nError processing prompt: {e}", file=sys.stderr)
             return None
