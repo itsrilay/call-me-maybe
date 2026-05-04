@@ -18,3 +18,6 @@ lint-strict:
 clean:
 	rm -rf .mypy_cache .pytest_cache
 	find . -depth -path "./.venv" -prune -o -name "__pycache__" -exec rm -rf {} +
+
+test:
+	@uv run python -m pytest
