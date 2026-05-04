@@ -27,7 +27,7 @@ class IOHandler:
         "uv.lock", ".gitignore"
     }
 
-    PROTECTED_DIRS = {"src", "llm_sdk", ".git", ".venv"}
+    PROTECTED_DIRS = {"src", "llm_sdk", ".git", ".venv", "venv", "env"}
 
     @staticmethod
     def _format_error(e: ValidationError) -> str:
