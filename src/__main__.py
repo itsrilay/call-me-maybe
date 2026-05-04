@@ -145,7 +145,7 @@ def main() -> None:
                     "matching the schema definitions exactly.)"
                 )
 
-            result = pipeline.run(current_prompt_text, fsm, max_tokens=2)
+            result = pipeline.run(current_prompt_text, fsm)
 
             if result is not None:
                 break
