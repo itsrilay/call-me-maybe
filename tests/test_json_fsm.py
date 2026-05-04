@@ -4,6 +4,7 @@ from src.json_fsm import JSONFSM
 from src.json_validator import JSONValidator
 from src.common import StatesEnum
 from src.models import FunctionDefinition, ParameterDetail
+from typing import cast
 
 
 @pytest.fixture
@@ -45,11 +46,11 @@ def test_fsm_state_transitions(
 
     fsm.update_state('"name"', validator)
     fsm.update_state(":", validator)
-    assert fsm.state == StatesEnum.NAME_VALUE
+    assert cast(StatesEnum, fsm.state) == StatesEnum.NAME_VALUE
 
     fsm.update_state('"fn_test"', validator)
     fsm.update_state(",", validator)
-    assert fsm.state == StatesEnum.ARGS_KEY
+    assert cast(StatesEnum, fsm.state) == StatesEnum.ARGS_KEY
 
 
 def test_fsm_context_updates(
@@ -123,7 +124,7 @@ def test_fsm_zero_parameters(
     fsm.update_state("{", validator)
     assert fsm.state == StatesEnum.PARAM_KEY
     fsm.update_state("}", validator)
-    assert fsm.state == StatesEnum.JSON_END
+    assert cast(StatesEnum, fsm.state) == StatesEnum.JSON_END
 
 
 def test_fsm_update_state_decoy(
