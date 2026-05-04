@@ -52,7 +52,7 @@ class JSONFSM:
         self.full_json = ""  # Complete Output
 
         # State Transitions
-        self.transitions = {
+        self.transitions: dict[StatesEnum, dict[str, StatesEnum]] = {
             StatesEnum.START: {"{": StatesEnum.NAME_KEY},
             StatesEnum.NAME_KEY: {":": StatesEnum.NAME_VALUE},
             StatesEnum.NAME_VALUE: {",": StatesEnum.ARGS_KEY},

@@ -46,7 +46,7 @@ class JSONValidator:
         self.fn_defs = fn_defs
         self.valid_fn_names: list[str] = [fn.name for fn in fn_defs]
 
-        self.prefix_lookups = {
+        self.prefix_lookups: dict[StatesEnum, set[str]] = {
             StatesEnum.START: self.build_prefix_set(['{"name":']),
             StatesEnum.NAME_KEY: self.build_prefix_set(['"name":']),
             StatesEnum.ARGS_KEY: self.build_prefix_set(['"parameters":']),
@@ -56,7 +56,7 @@ class JSONValidator:
             StatesEnum.JSON_END: {"}"}
         }
 
-        self.param_prefix_lookups = {
+        self.param_prefix_lookups: dict[str, dict[str, set[str]]] = {
             fn.name: {
                 param: self.build_prefix_set([f'"{param}":'])
                 for param in fn.parameters
@@ -196,7 +196,13 @@ class JSONValidator:
                 if "\n" in token:
                     return False
 
-                quote_pos = token.find('"')
+                # Find closing '"' by skipping opening '"' if buffer is empty
+                search_start = 0
+                if not buffer.lstrip():
+                    first_quote = token.find('"')
+                    search_start = first_quote + 1
+
+                quote_pos = token.find('"', search_start)
                 if quote_pos != -1:
                     # See if quote is preceded by backslashes
                     text_before = buffer + token[:quote_pos]

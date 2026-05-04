@@ -11,10 +11,11 @@ from src.io_handler import IOHandler
 from src.json_validator import JSONValidator
 from src.json_fsm import JSONFSM
 from src.common import IOHandlerError, NoPromptsFound
-from src.models import FunctionDefinition, PromptInput
+from src.models import FunctionDefinition, PromptInput, FunctionCall
 from llm_sdk import Small_LLM_Model
 import numpy as np
 import numpy.typing as npt
+from typing import Any
 
 
 def prepare_resources(args: argparse.Namespace, io: IOHandler) -> tuple[
@@ -112,13 +113,13 @@ def main() -> None:
     )
 
     # Generation loop
-    results = []
+    results: list[dict[str, Any]] = []
     for prompt_obj in prompts:
-        prompt_text = prompt_obj.prompt
+        prompt_text: str = prompt_obj.prompt
         print(f"\nProcessing: {prompt_text}")
 
         fsm = JSONFSM(pipeline.fn_defs)
-        result = pipeline.run(prompt_text, fsm)
+        result: FunctionCall | None = pipeline.run(prompt_text, fsm)
 
         if result is None:
             print(f"Skipping failed prompt: \"{prompt_text}\"")

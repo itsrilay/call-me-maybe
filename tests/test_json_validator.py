@@ -327,3 +327,21 @@ def test_validator_string_newline_rejection(
         current_fn=sample_fn,
         current_param="text"
     ) is False
+
+
+def test_validator_unicode_and_special_chars(
+    validator: JSONValidator, sample_fn: FunctionDefinition
+) -> None:
+    """Verify that Unicode and control characters are allowed in strings."""
+    sample_fn.parameters["text"] = ParameterDetail(type="string")
+
+    # Emojis and Tabs are valid inside JSON strings
+    unicode_token = ' "Hello 🌍\\t"'
+    assert validator.is_token_valid(
+        state=StatesEnum.PARAM_VALUE,
+        buffer="",
+        token=unicode_token,
+        used_params=set(),
+        current_fn=sample_fn,
+        current_param="text"
+    ) is True

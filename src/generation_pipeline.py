@@ -136,13 +136,13 @@ class GenerationPipeline:
         input_ids_list: list[int] = self.model.encode(full_prompt)[0].tolist()
         prompt_length = len(input_ids_list)
 
-        limit = max_tokens if max_tokens else self.MAX_TOKENS
+        limit: int = max_tokens if max_tokens else self.MAX_TOKENS
         tokens_generated = 0
 
         while (
             fsm.state != StatesEnum.END and tokens_generated < limit
         ):
-            allowed_tokens = fsm.get_allowed_tokens(
+            allowed_tokens: list[int] = fsm.get_allowed_tokens(
                 self.decoded_vocabulary, self.validator
             )
 
@@ -150,11 +150,11 @@ class GenerationPipeline:
                 break
 
             # Convert token ids to strings
-            allowed_strings = [
+            allowed_strings: list[str] = [
                 self.decoded_vocabulary[i] for i in allowed_tokens
             ]
 
-            longest_str = max(allowed_strings, key=len)
+            longest_str: str = max(allowed_strings, key=len)
 
             # If every allowed token is just a prefix of the longest string
             # The LLM has no choice, it must choose the longest string
@@ -168,12 +168,14 @@ class GenerationPipeline:
 
             else:
                 # Use model inference
-                logits = self.model.get_logits_from_input_ids(input_ids_list)
+                logits: list[float] = self.model.get_logits_from_input_ids(
+                    input_ids_list
+                )
                 token_id = self._apply_mask(logits, allowed_tokens)
 
             input_ids_list.append(token_id)
 
-            token_string = self.model.decode([token_id])
+            token_string: str = self.model.decode([token_id])
             print(token_string, end="", flush=True)
 
             tokens_generated += 1
@@ -190,7 +192,7 @@ class GenerationPipeline:
         generated_ids = input_ids_list[prompt_length:]
 
         # Turn them into a single string
-        final_json_string = self.model.decode(generated_ids)
+        final_json_string: str = self.model.decode(generated_ids)
 
         try:
             result = json.loads(final_json_string)
