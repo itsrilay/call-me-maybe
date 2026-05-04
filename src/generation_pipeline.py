@@ -16,6 +16,19 @@ import numpy as np
 import numpy.typing as npt
 
 
+class Colors:
+    """ANSI escape sequences for terminal text coloring.
+
+    Used to visualize the relationship between the LLM and the FSM
+    during the generation process.
+    """
+    BLUE = '\033[94m'    # Deterministic bypass
+    GREEN = '\033[92m'   # LLM and FSM agreed
+    YELLOW = '\033[93m'  # FSM intervened
+    GRAY = '\033[90m'    # State transitions
+    RESET = '\033[0m'    # Reset to default terminal color
+
+
 class GenerationPipeline:
     """Orchestrates the constrained decoding process.
 
@@ -87,8 +100,8 @@ class GenerationPipeline:
 
     def _apply_mask(
         self, logits: list[float], allowed_tokens: list[int]
-    ) -> int:
-        """Applies the logit mask to constrain choices to allowed tokens.
+    ) -> tuple[int, bool]:
+        """Applies the logit mask and detects if FSM intervention was required.
 
         Converts logits to a NumPy array, applies a mask that sets illegal
         tokens to -inf, and identifies the token with the highest probability.
@@ -99,9 +112,13 @@ class GenerationPipeline:
                 according to the FSM.
 
         Returns:
-            int: The ID of the highest-scoring allowed token.
+            tuple[int, bool]: Tuple containing the ID of the highest-scoring
+                allowed token and confirmation of FSM intervention.
         """
         logits_arr = np.array(logits, dtype=np.float32)
+
+        # Original LLM choice, before FSM intervention
+        original_top_choice = int(np.argmax(logits_arr))
 
         self.logit_mask.fill(-np.inf)
         self.logit_mask[allowed_tokens] = 0.0
@@ -110,7 +127,9 @@ class GenerationPipeline:
 
         token_id = int(np.argmax(logits_arr))
 
-        return token_id
+        intervened = original_top_choice != token_id
+
+        return token_id, intervened
 
     def run(
             self, user_prompt: str, fsm: JSONFSM, max_tokens: int | None = None
@@ -139,9 +158,27 @@ class GenerationPipeline:
         limit: int = max_tokens if max_tokens else self.MAX_TOKENS
         tokens_generated = 0
 
+        previous_state = None
+
+        print("\n" + "="*45)
+        print(
+            f"{Colors.BLUE}█ Deterministic{Colors.RESET} | {Colors.GREEN}█ "
+            f"Agreed{Colors.RESET} | {Colors.YELLOW}█ "
+            f"FSM Intervened{Colors.RESET}"
+        )
+        print("="*45 + "\n")
+
         while (
             fsm.state != StatesEnum.END and tokens_generated < limit
         ):
+            # Print state changes
+            if fsm.state != previous_state:
+                print(
+                    f"\n{Colors.GRAY}[STATE: {fsm.state.name}]{Colors.RESET} ",
+                    end=""
+                )
+                previous_state = fsm.state
+
             allowed_tokens: list[int] = fsm.get_allowed_tokens(
                 self.decoded_vocabulary, self.validator
             )
@@ -165,18 +202,21 @@ class GenerationPipeline:
             if is_deterministic:
                 # Bypass LLM, force the longest string
                 token_id = allowed_tokens[allowed_strings.index(longest_str)]
+                color = Colors.BLUE
 
             else:
                 # Use model inference
                 logits: list[float] = self.model.get_logits_from_input_ids(
                     input_ids_list
                 )
-                token_id = self._apply_mask(logits, allowed_tokens)
+                token_id, intervened = self._apply_mask(logits, allowed_tokens)
+                color = Colors.YELLOW if intervened else Colors.GREEN
 
             input_ids_list.append(token_id)
 
             token_string: str = self.model.decode([token_id])
-            print(token_string, end="", flush=True)
+            # Print generated token
+            print(f"{color}{token_string}{Colors.RESET}", end="", flush=True)
 
             tokens_generated += 1
 
