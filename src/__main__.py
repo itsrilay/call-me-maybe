@@ -11,11 +11,29 @@ from src.io_handler import IOHandler
 from src.json_validator import JSONValidator
 from src.json_fsm import JSONFSM
 from src.common import IOHandlerError, NoPromptsFound
+from src.models import FunctionDefinition, PromptInput
 from llm_sdk import Small_LLM_Model
 import numpy as np
+import numpy.typing as npt
 
 
-def prepare_resources(args: argparse.Namespace, io: IOHandler):
+def prepare_resources(args: argparse.Namespace, io: IOHandler) -> tuple[
+    Small_LLM_Model,
+    list[FunctionDefinition],
+    list[PromptInput],
+    list[str],
+    JSONValidator,
+    npt.NDArray[np.float32]
+]:
+    """Validates paths, loads all JSON resources, and prepares the logit mask.
+
+    Args:
+        args (argparse.Namespace): The parsed command-line arguments.
+        io (IOHandler): The handler used for file operations.
+
+    Returns:
+        tuple: A collection of all initialized objects required for generation.
+    """
     # Validate output path
     if not io.is_path_safe(args.output):
         raise IOHandlerError(
@@ -26,12 +44,6 @@ def prepare_resources(args: argparse.Namespace, io: IOHandler):
     # Load and validate input
     fn_defs = io.load_functions(args.functions_definition)
     prompts = io.load_prompts(args.input)
-
-    # Exit early if no prompts
-    if not prompts:
-        raise NoPromptsFound(
-            "Input file is empty. Writing empty results and exiting."
-        )
 
     # Prepare model and its vocabulary
     model = Small_LLM_Model()

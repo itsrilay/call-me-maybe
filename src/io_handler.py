@@ -9,7 +9,7 @@ import os
 from typing import Any
 from pydantic import ValidationError, TypeAdapter
 from src.models import FunctionDefinition, PromptInput, ParameterDetail
-from src.common import IOHandlerError
+from src.common import IOHandlerError, NoPromptsFound
 
 
 class IOHandler:
@@ -88,6 +88,10 @@ class IOHandler:
         abs_path = os.path.abspath(path)
         project_root = os.path.abspath(".")
         filename = os.path.basename(abs_path)
+
+        # Block hidden files
+        if filename.startswith("."):
+            return False
 
         # Block Python files or protected files
         if path.endswith(".py") or filename in self.PROTECTED_FILES:
@@ -192,7 +196,16 @@ class IOHandler:
         raw_prompt_data = self._read_raw_json(path)
         try:
             prompt_adapter = TypeAdapter(list[PromptInput])
-            return prompt_adapter.validate_python(raw_prompt_data)
+            prompts = prompt_adapter.validate_python(raw_prompt_data)
+
+            # Exit early if no prompts
+            if not prompts:
+                raise NoPromptsFound(
+                    "Warning: Input file is empty. "
+                    "Writing empty results and exiting."
+                )
+
+            return prompts
         except ValidationError as e:
             raise IOHandlerError(
                 "Error: Invalid prompt input schema:\n"
