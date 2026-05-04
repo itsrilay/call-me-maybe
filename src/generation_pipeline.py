@@ -131,10 +131,90 @@ class GenerationPipeline:
 
         return token_id, intervened
 
+    def _salvage_json(self, fsm: JSONFSM) -> str:
+        """Attempts to repair truncated JSON based on FSM state.
+
+        Args:
+            fsm (JSONFSM): The state machine at the point of truncation.
+
+        Returns:
+            str: The repaired JSON string, or an empty string if unsalvageable.
+        """
+        # Fail too early
+        if fsm.state in [
+            StatesEnum.START, StatesEnum.NAME_KEY,
+            StatesEnum.NAME_VALUE, StatesEnum.ARGS_KEY, StatesEnum.ARGS_START
+        ]:
+            print(
+                f"\n{Colors.YELLOW}[SALVAGE] Truncated before parameters. "
+                f"Abandoning salvage for retry loop...{Colors.RESET}",
+                file=sys.stderr
+            )
+            # Force error
+            return ""
+
+        # Reached parameters, salvage
+        print(
+            f"\n{Colors.YELLOW}[SALVAGE] Truncated output detected. "
+            f"Using FSM state to salvage JSON...{Colors.RESET}",
+            file=sys.stderr
+        )
+        healed_json = fsm.full_json
+
+        # Cut off inside a value
+        if (
+            fsm.state == StatesEnum.PARAM_VALUE and
+            fsm.current_fn and
+            fsm.current_param
+        ):
+            param_type = fsm.current_fn.parameters[fsm.current_param].type
+
+            if not self.validator.validate_buffer(fsm.buffer, param_type):
+                if param_type == "string":
+                    if not fsm.buffer.strip():
+                        healed_json += '""'
+                    else:
+                        # Count backslashes to avoid escaping closing quote
+                        trailing_slashes = (
+                            len(fsm.buffer) - len(fsm.buffer.rstrip('\\'))
+                        )
+                        if trailing_slashes % 2 != 0:
+                            healed_json += '\\'
+                        healed_json += '"'
+                else:
+                    # Slice off partial garbage ('14.', 'tr')
+                    if fsm.buffer:
+                        healed_json = healed_json[:-len(fsm.buffer)]
+
+                    # Inject strict type defaults
+                    if param_type == "number":
+                        healed_json += '0.0'
+                    elif param_type == "integer":
+                        healed_json += '0'
+                    elif param_type == "boolean":
+                        healed_json += 'false'
+                    elif param_type == "null":
+                        healed_json += 'null'
+
+        # Cut off looking for a new key
+        elif fsm.state == StatesEnum.PARAM_KEY:
+            # Slice off the partial key (e.g., '"b') to remove dangling keys
+            if fsm.buffer:
+                healed_json = healed_json[:-len(fsm.buffer)]
+            healed_json = healed_json.rstrip(" \n\r\t,")
+
+        # Balance structural closing braces
+        if fsm.state in [StatesEnum.PARAM_KEY, StatesEnum.PARAM_VALUE]:
+            healed_json += "}}"
+        elif fsm.state == StatesEnum.JSON_END:
+            healed_json += "}"
+
+        return healed_json
+
     def run(
             self, user_prompt: str, fsm: JSONFSM, max_tokens: int | None = None
     ) -> FunctionCall | None:
-        """Executes the constrained generation loop for a user prompt.
+        """Executes the generation loop, salvaging data if the limit is hit.
 
         Args:
             user_prompt (str): The natural language query from the user.
@@ -224,20 +304,31 @@ class GenerationPipeline:
 
         if tokens_generated >= limit:
             print(
-                f"\nWarning: Hit max token ({limit}) limit.",
+                f"\n{Colors.YELLOW}Warning: Hit max token ({limit}) limit."
+                f"{Colors.RESET}",
                 file=sys.stderr
             )
+            # Salvage json
+            final_json_string = self._salvage_json(fsm)
+        else:
+            # Extract only the generated tokens normally
+            generated_ids = input_ids_list[prompt_length:]
+            final_json_string = self.model.decode(generated_ids)
 
-        # Extract only the generated tokens
-        generated_ids = input_ids_list[prompt_length:]
-
-        # Turn them into a single string
-        final_json_string: str = self.model.decode(generated_ids)
+        # Silent return for intentional salvage early fail
+        if not final_json_string.strip():
+            return None
 
         try:
             result = json.loads(final_json_string)
             if not isinstance(result, dict):
                 raise ValueError("Generated JSON is not a dictionary.")
+            if fsm.current_fn:
+                required_keys = set(fsm.current_fn.parameters.keys())
+                generated_keys = set(result.get("parameters", {}).keys())
+                if not required_keys.issubset(generated_keys):
+                    missing = required_keys - generated_keys
+                    raise ValueError(f"Missing required parameters: {missing}")
             return FunctionCall(prompt=user_prompt, **result)
         except (ValidationError, json.JSONDecodeError, ValueError) as e:
             print(f"\nError processing prompt: {e}", file=sys.stderr)

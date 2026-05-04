@@ -66,7 +66,8 @@ def main() -> None:
 
     Parses command-line arguments, initializes the IO handler to load
     and validate data, manages early-exit optimizations for empty inputs,
-    orchestrates the LLM generation loop, and saves the final results.
+    orchestrates the LLM generation loop with dynamic retry mechanisms for
+    error recovery, and saves the final results.
 
     Raises:
         SystemExit: Exits with code 0 on successful empty-input handling
@@ -112,21 +113,48 @@ def main() -> None:
         model, fn_defs, decoded_vocabulary, validator, logit_mask
     )
 
-    # Generation loop
     results: list[dict[str, Any]] = []
+    max_retries = 3
+    # Generation loop
     for prompt_obj in prompts:
         prompt_text: str = prompt_obj.prompt
         print(f"\nProcessing: {prompt_text}")
 
         fsm = JSONFSM(pipeline.fn_defs)
-        result: FunctionCall | None = pipeline.run(prompt_text, fsm)
+        result: FunctionCall | None = None
 
+        # Retry loop
+        for attempt in range(max_retries):
+            # Instantiate a fresh FSM for every attempt
+            fsm = JSONFSM(pipeline.fn_defs)
+
+            current_prompt_text = prompt_text
+            if attempt == 1:
+                print("\n  [RETRY 1/2] Re-prompting with stricter rules...")
+                current_prompt_text += (
+                    " (Carefully extract all "
+                    "parameters into valid JSON)"
+                )
+            elif attempt == 2:
+                print(
+                    "\n  [RETRY 2/2] Final attempt. "
+                    "Applying additional constraints..."
+                )
+                current_prompt_text += (
+                    " (CRITICAL: Output ONLY valid JSON "
+                    "matching the schema definitions exactly.)"
+                )
+
+            result = pipeline.run(current_prompt_text, fsm, max_tokens=2)
+
+            if result is not None:
+                break
         if result is None:
             print(f"Skipping failed prompt: \"{prompt_text}\"")
             continue
 
         results.append(result.model_dump())
-        print("\n" + "-"*30)
+        print("\n" + "-"*45)
 
     io.save_results(args.output, results)
 
