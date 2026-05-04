@@ -40,7 +40,7 @@ A `Makefile` is provided for standard operations:
     make clean
     ```
 
-### Example Usage
+## Example Usage
 To run the program with specific custom files, use the CLI arguments:
 
 ```bash
@@ -50,10 +50,10 @@ uv run python -m src \
 --output data/output/function_calling_results.json
 ```
 
-#### Input Prompt:
+### Input Prompt:
 `"What is the sum of 40 and 2?"`
 
-#### Output Function Call:
+### Output Function Call:
 ```json
 {
   "prompt": "What is the sum of 40 and 2?",
