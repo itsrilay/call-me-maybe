@@ -96,7 +96,9 @@ class GenerationPipeline:
                 parameters += f"{param}: {param_type}\n"
             self.system_prompt += f"{parameters}\n"
 
+        print(f"\n{Colors.GRAY}-- SYSTEM PROMPT INITIALIZED --{Colors.RESET}")
         print(self.system_prompt)
+        print(f"{Colors.GRAY}-------------------------------{Colors.RESET}\n")
 
     def _apply_mask(
         self, logits: list[float], allowed_tokens: list[int]
