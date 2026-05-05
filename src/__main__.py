@@ -36,11 +36,7 @@ def prepare_resources(args: argparse.Namespace, io: IOHandler) -> tuple[
         tuple: A collection of all initialized objects required for generation.
     """
     # Validate output path
-    if not io.is_path_safe(args.output):
-        raise IOHandlerError(
-            f"Error: The output path '{args.output}' is forbidden. "
-            "It targets a protected project file or directory.",
-        )
+    io.check_write_access(args.output)
 
     # Load and validate input
     fn_defs = io.load_functions(args.functions_definition)

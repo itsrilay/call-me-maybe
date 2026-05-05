@@ -19,6 +19,12 @@ def sample_fn() -> FunctionDefinition:
 
 
 @pytest.fixture
+def fsm(sample_fn: FunctionDefinition) -> JSONFSM:
+    """Initializes a default fsm with sample function"""
+    return JSONFSM([sample_fn])
+
+
+@pytest.fixture
 def validator(sample_fn: FunctionDefinition) -> JSONValidator:
     """Initializes a validator with a tiny vocabulary."""
     vocab = [
@@ -28,17 +34,15 @@ def validator(sample_fn: FunctionDefinition) -> JSONValidator:
     return JSONValidator([sample_fn], vocab)
 
 
-def test_fsm_initial_state(sample_fn: FunctionDefinition) -> None:
+def test_fsm_initial_state(fsm: JSONFSM) -> None:
     """Verify FSM starts at the correct point."""
-    fsm = JSONFSM([sample_fn])
     assert fsm.state == StatesEnum.START
 
 
 def test_fsm_state_transitions(
-        sample_fn: FunctionDefinition, validator: JSONValidator
+        fsm: JSONFSM, validator: JSONValidator
 ) -> None:
     """Simulate a valid JSON generation sequence and verify state changes."""
-    fsm = JSONFSM([sample_fn])
 
     # sequence: { -> "name" -> : -> "fn_test" -> ,
     fsm.update_state("{", validator)
@@ -54,10 +58,9 @@ def test_fsm_state_transitions(
 
 
 def test_fsm_context_updates(
-    sample_fn: FunctionDefinition, validator: JSONValidator
+    fsm: JSONFSM, validator: JSONValidator
 ) -> None:
     """Verify FSM correctly identifies function and parameter from tokens."""
-    fsm = JSONFSM([sample_fn])
 
     # Transition through name
     fsm.state = StatesEnum.NAME_VALUE
@@ -114,11 +117,10 @@ def test_fsm_prevents_duplicate_params() -> None:
 
 
 def test_fsm_zero_parameters(
-        sample_fn: FunctionDefinition, validator: JSONValidator
+        fsm: JSONFSM, sample_fn: FunctionDefinition, validator: JSONValidator
 ) -> None:
     """Verify FSM transitions correctly for functions with no arguments."""
     sample_fn.parameters = {}
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.ARGS_START
 
     fsm.update_state("{", validator)
@@ -128,11 +130,10 @@ def test_fsm_zero_parameters(
 
 
 def test_fsm_update_state_decoy(
-    sample_fn: FunctionDefinition, validator: JSONValidator
+    fsm: JSONFSM, sample_fn: FunctionDefinition, validator: JSONValidator
 ) -> None:
     """Verify commas inside strings do not trigger a state transition."""
     sample_fn.parameters["val"].type = "string"
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.PARAM_VALUE
     fsm.current_fn = sample_fn
     fsm.current_param = "val"
@@ -146,10 +147,9 @@ def test_fsm_update_state_decoy(
 
 
 def test_fsm_decoy_trigger_at_start(
-    validator: JSONValidator, sample_fn: FunctionDefinition
+    fsm: JSONFSM, validator: JSONValidator, sample_fn: FunctionDefinition
 ) -> None:
     """Verify trigger character at the start of a value is treated as data."""
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.PARAM_VALUE
     fsm.current_fn = sample_fn
     fsm.current_param = "val"
@@ -163,10 +163,9 @@ def test_fsm_decoy_trigger_at_start(
 
 
 def test_fsm_uses_structural_cache(
-    validator: JSONValidator, sample_fn: FunctionDefinition
+    fsm: JSONFSM, validator: JSONValidator
 ) -> None:
     """Verify get_allowed_tokens uses validator cache for structural states."""
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.START
     fsm.buffer = ""  # Cache is only used when buffer is empty
 
@@ -179,10 +178,9 @@ def test_fsm_uses_structural_cache(
 
 
 def test_fsm_get_allowed_tokens_completion_trigger(
-    validator: JSONValidator, sample_fn: FunctionDefinition
+    fsm: JSONFSM, validator: JSONValidator, sample_fn: FunctionDefinition
 ) -> None:
     """Verify tokens completing a value and including a trigger are allowed."""
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.PARAM_VALUE
     fsm.current_fn = sample_fn
     fsm.current_param = "val"
@@ -197,10 +195,9 @@ def test_fsm_get_allowed_tokens_completion_trigger(
 
 
 def test_fsm_buffer_accumulation(
-    validator: JSONValidator, sample_fn: FunctionDefinition
+    fsm: JSONFSM, validator: JSONValidator, sample_fn: FunctionDefinition
 ) -> None:
     """Verify that partial tokens accumulate correctly in the buffer."""
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.NAME_VALUE
     fsm.current_fn = sample_fn
 
@@ -244,10 +241,9 @@ def test_fsm_parameter_to_parameter_transition(
 
 
 def test_fsm_multi_transition_token(
-    validator: JSONValidator, sample_fn: FunctionDefinition
+    fsm: JSONFSM, validator: JSONValidator
 ) -> None:
     """Verify a single token can trigger multiple state transitions."""
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.START
 
     # This token should trigger transitions for ':' and then start the args '{'
@@ -257,10 +253,9 @@ def test_fsm_multi_transition_token(
 
 
 def test_fsm_get_allowed_tokens_full_params(
-    validator: JSONValidator, sample_fn: FunctionDefinition
+    fsm: JSONFSM, validator: JSONValidator, sample_fn: FunctionDefinition
 ) -> None:
     """Verify only closing brace is allowed when all parameters are filled."""
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.PARAM_VALUE
     fsm.current_fn = sample_fn
     fsm.current_param = "val"
@@ -277,10 +272,9 @@ def test_fsm_get_allowed_tokens_full_params(
 
 
 def test_fsm_accumulation_full_json(
-    validator: JSONValidator, sample_fn: FunctionDefinition
+    fsm: JSONFSM, validator: JSONValidator
 ) -> None:
     """Verify that full_json correctly accumulates characters over time."""
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.NAME_VALUE
 
     fsm.update_state('"fn_', validator)
@@ -292,10 +286,9 @@ def test_fsm_accumulation_full_json(
 
 
 def test_fsm_final_transition_to_end(
-    validator: JSONValidator, sample_fn: FunctionDefinition
+    fsm: JSONFSM, validator: JSONValidator
 ) -> None:
     """Verify FSM transitions to END state on final closing brace."""
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.JSON_END
 
     fsm.update_state("}", validator)
@@ -303,10 +296,9 @@ def test_fsm_final_transition_to_end(
 
 
 def test_fsm_terminal_logic(
-    validator: JSONValidator, sample_fn: FunctionDefinition
+    fsm: JSONFSM, validator: JSONValidator
 ) -> None:
     """Verify FSM becomes inactive once it reaches the END state."""
-    fsm = JSONFSM([sample_fn])
     fsm.state = StatesEnum.END
 
     # No tokens should be allowed once finished

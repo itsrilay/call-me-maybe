@@ -111,6 +111,36 @@ class IOHandler:
 
         return True
 
+    def check_write_access(self, path: str) -> None:
+        """Verifies that the output path is writeable.
+
+        Args:
+            path (str): The target output path.
+
+        Raises:
+            IOHandlerError: If the directory is not writeable or the file
+                cannot be created.
+        """
+        if not self.is_path_safe(path):
+            raise IOHandlerError(
+                f"Error: The path '{path}' is protected or forbidden."
+            )
+
+        try:
+            # Ensure the directory exists first
+            output_dir = os.path.dirname(path)
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
+
+            # "Touch" the file to check for OS-level permission issues
+            with open(path, "a", encoding="utf-8"):
+                pass
+        except OSError as e:
+            raise IOHandlerError(
+                f"System Error: Cannot write to '{path}'. "
+                f"Check directory permissions. (Original error: {e})"
+            )
+
     def load_vocabulary(self, path: str) -> dict[str, int]:
         """Loads and validates the LLM token vocabulary from a JSON file.
 
