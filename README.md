@@ -85,6 +85,8 @@ The core of this project is **Constrained Decoding** powered by a **Finite State
 
 - **Structural ID Caching:** Valid token IDs for predictable empty-buffer states (like opening braces or quotes) are pre-calculated and cached at initialization.
 
+- **Pre-flight Write Access Check:** To prevent wasting expensive computational resources on generations that cannot be saved, the system verifies OS-level write permissions and path safety for the output file before initiating any LLM inference.
+
 ## Performance Analysis
 - **Accuracy:** The application guarantees 100% syntactically valid JSON. It prevents the model from voluntarily skipping required schema parameters.
 
@@ -97,7 +99,7 @@ The core of this project is **Constrained Decoding** powered by a **Finite State
 
 - **Token Boundary Synchronization:** LLM tokenizers do not respect JSON boundaries. A single token might contain parts of two different states (e.g., `"},"` containing a value closer, a dictionary closer, and a comma for the next key). Implementing an `update_state` loop that could recursively partition a single token into multiple state transitions without losing characters was critical for maintaining sync.
 
-- **Buffer vs. Full JSON Integrity:** Managing the `buffer` (temporary state text) against the `full_json` (committed output) was a delicate balancing act. We had to ensure that partial tokens were stored in the buffer for validation but only committed to the final string once a transition trigger was identified, preventing data loss or "ghost" characters from corrupting the final JSON.
+- **Buffer vs. Full JSON Integrity:** Managing the `buffer` (temporary state text) against the `full_json` (committed output) was a delicate balancing act. I had to ensure that partial tokens were stored in the buffer for validation but only committed to the final string once a transition trigger was identified, preventing data loss or "ghost" characters from corrupting the final JSON.
 
 - **String Escaping & Number Precision:** Handling edge cases like escaped quotes (`\"`) or incomplete numbers (e.g., a token ending in a decimal point `.`) required the FSM to "hold" the transition until the next token arrived to confirm the value was legally closed.
 
@@ -106,7 +108,7 @@ The core of this project is **Constrained Decoding** powered by a **Finite State
 ## Testing Strategy
 The project includes a robust `pytest` suite that heavily tests edge cases without needing full LLM inference:
 
-- **IO Handlers:** Simulates OS-level read/write denials, hidden file blocks, and Pydantic schema violations.
+- **IO Handlers:** Simulates OS-level read/write denials, hidden file blocks, Pydantic schema violations, and OS-level permission errors using mock objects to verify the pre-flight check logic.
 
 - **JSON Validator:** Tests strict parsing constraints, scientific notation (`1.0e-10`), negative leading zeros, and trailing whitespace resilience.
 
@@ -131,3 +133,5 @@ AI was utilized as an interactive tutor, sounding board, and architecture review
 - **Brainstorm edge cases:** Identify brutal failure points, such as mid-number cutoffs, dangling JSON keys, and escaped quote traps.
 
 - **Review bonus requirements:** Help formulate and review the implementation plan for the testing suite, visualizer, performance optimizations, salvager and retry loop, allowing for confident, rapid development while maximizing learning.
+
+- **Document the project:** Assist in the collaborative drafting and refinement of this `README.md` to ensure it met all specific academic requirements, technical explanations, and performance analysis sections.
