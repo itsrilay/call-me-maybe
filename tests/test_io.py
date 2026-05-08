@@ -8,7 +8,11 @@ from unittest.mock import patch, mock_open
 
 @pytest.fixture
 def io() -> IOHandler:
-    """Provides a fresh IOHandler instance for testing."""
+    """Provides a fresh IOHandler instance for testing.
+
+    Returns:
+        IOHandler: An IOHandler instance used for testing.
+    """
     return IOHandler()
 
 

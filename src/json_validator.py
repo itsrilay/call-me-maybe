@@ -43,7 +43,6 @@ class JSONValidator:
             decoded_vocabulary (list[str]): The vocabulary list of string
                 tokens from the model.
         """
-        self.fn_defs = fn_defs
         self.valid_fn_names: list[str] = [fn.name for fn in fn_defs]
 
         self.prefix_lookups: dict[StatesEnum, set[str]] = {

@@ -237,10 +237,10 @@ class JSONFSM:
                     # Transition
                     # Update function info for future reference
                     if self.state == StatesEnum.NAME_VALUE and trigger == ",":
-                        fn_name = (self.buffer + before).strip('" ')
+                        fn_name = combined.strip('" ')
                         self.current_fn = self.fn_map.get(fn_name)
                     elif self.state == StatesEnum.PARAM_KEY and trigger == ":":
-                        self.current_param = (self.buffer + before).strip('" ')
+                        self.current_param = combined.strip('" ')
                         self.used_params.add(self.current_param)
 
                     # Move to next state

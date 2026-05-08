@@ -7,7 +7,12 @@ from src.common import StatesEnum
 
 @pytest.fixture
 def sample_fn() -> FunctionDefinition:
-    """Provides a basic function for testing types."""
+    """Provides a basic function for testing types.
+
+    Returns:
+        FunctionDefinition: A function definition used to test type-specific
+            constraints.
+    """
     return FunctionDefinition(
         name="fn_test",
         description="A test function",
@@ -18,7 +23,16 @@ def sample_fn() -> FunctionDefinition:
 
 @pytest.fixture
 def validator(sample_fn: FunctionDefinition) -> JSONValidator:
-    """Initializes a validator with a tiny vocabulary."""
+    """Initializes a validator with a limited testing vocabulary.
+
+    Args:
+        sample_fn (FunctionDefinition): The function definition used for
+            schema validation.
+
+    Returns:
+        JSONValidator: A validator instance initialized with a specific set
+            of structural characters and schema-specific tokens.
+    """
     vocab = [
         "{", "}", ":", ",", '"name"', '"parameters"', '"fn_test"', '"val"',
         "1.0"

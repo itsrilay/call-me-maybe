@@ -9,7 +9,11 @@ from typing import cast
 
 @pytest.fixture
 def sample_fn() -> FunctionDefinition:
-    """Provides a basic function for testing transitions."""
+    """Provides a basic function for testing transitions.
+
+    Returns:
+        FunctionDefinition: A basic function with one numeric parameter.
+    """
     return FunctionDefinition(
         name="fn_test",
         description="A test function",
@@ -20,13 +24,30 @@ def sample_fn() -> FunctionDefinition:
 
 @pytest.fixture
 def fsm(sample_fn: FunctionDefinition) -> JSONFSM:
-    """Initializes a default fsm with sample function"""
+    """Initializes a default fsm with sample function.
+
+    Args:
+        sample_fn (FunctionDefinition): The function definition to load
+            into the FSM.
+
+    Returns:
+        JSONFSM: A fresh FSM instance for testing.
+    """
     return JSONFSM([sample_fn])
 
 
 @pytest.fixture
 def validator(sample_fn: FunctionDefinition) -> JSONValidator:
-    """Initializes a validator with a tiny vocabulary."""
+    """Initializes a validator with a tiny vocabulary.
+
+    Args:
+        sample_fn (FunctionDefinition): The function definition used for
+            schema validation.
+
+    Returns:
+        JSONValidator: A validator instance with a minimal pre-decoded
+            vocabulary.
+    """
     vocab = [
         "{", "}", ":", ",", '"name"', '"parameters"', '"fn_test"', '"val"',
         "1.0"

@@ -9,7 +9,11 @@ from unittest.mock import MagicMock
 
 @pytest.fixture
 def pipeline() -> GenerationPipeline:
-    """Initializes a pipeline with mocked dependencies for unit testing."""
+    """Initializes a pipeline with mocked dependencies for unit testing.
+
+    Returns:
+        GenerationPipeline: A pipeline instance configured for testing.
+    """
     # Small logit mask for testing speed (size 10)
     mask = np.zeros(10, dtype=np.float32)
     # None for model/validator, the objective is to test masking/prompts
